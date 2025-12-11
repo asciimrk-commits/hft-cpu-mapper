@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>HFT Mapper v0.2.2 (Updated Instructions)</title>
+    <title>HFT Mapper v0.2.3 (Multi-Instance Support)</title>
     <style>
         :root {
             --bg: #1e1e1e;
@@ -286,6 +286,7 @@
     let coreData = {}; 
     let coreNumaMap = {};
     let netNumaNodes = new Set();
+    let detectedInstances = new Set();
     let serverName = '';
     let isMouseDown = false; 
     const tooltipEl = document.getElementById('tooltip');
@@ -333,6 +334,7 @@
         const tree = {}; 
         coreNumaMap = {};
         netNumaNodes = new Set();
+        detectedInstances = new Set();
         serverName = '';
         
         let runtimeConfigFound = false;
@@ -408,6 +410,17 @@
                 }
                 if (line.includes('Network interfaces cpus')) {
                     ignoreNetSection = false;
+                }
+                
+                // DETECT INSTANCES (Lines ending in : inside runtime config section)
+                // Looks for "AFX3:" or "RFQ0:"
+                const instanceMatch = line.match(/^(\w+):$/);
+                if (instanceMatch) {
+                    // Filter out generic headers
+                    const name = instanceMatch[1];
+                    if(name !== 'Overview' && name !== 'Instance') {
+                         detectedInstances.add(name);
+                    }
                 }
 
                 // Strategy A: Per-CPU lines
@@ -629,7 +642,12 @@
 
     function updateStats() {
         let txt = '';
-        if (serverName) txt += `# Config for ${serverName}\n`;
+        if (serverName) txt += `# Config for ${serverName}`;
+        if (detectedInstances.size > 0) {
+            txt += ` [Instances: ${Array.from(detectedInstances).join(', ')}]`;
+        }
+        txt += '\n';
+
         const isolatedCores = [];
         const roleCores = {}; 
         const robotPools = {}; 
