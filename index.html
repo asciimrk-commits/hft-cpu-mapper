@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>HFT Mapper v0.2.3 (Multi-Instance Support)</title>
+    <title>HFT Mapper v0.2.4 (Split View)</title>
     <style>
         :root {
             --bg: #1e1e1e;
@@ -11,9 +11,9 @@
             --text: #ccc;
             
             /* SIZING CONFIG */
-            --core-size: 60px;
-            --core-font: 18px;
-            --l3-width: 310px;
+            --core-size: 50px; /* Чуть меньше, чтобы несколько карт влезали лучше */
+            --core-font: 16px;
+            --l3-width: 260px;
             
             /* Colors */
             --socket-border: #ce9178; 
@@ -38,7 +38,7 @@
             user-select: none;
         }
         
-        /* --- Sidebar Layout --- */
+        /* --- Sidebar --- */
         .sidebar {
             width: 380px; 
             background: var(--panel);
@@ -52,6 +52,7 @@
             height: 100vh; 
             box-sizing: border-box;
             overflow-y: auto; 
+            flex-shrink: 0;
         }
 
         .sidebar::-webkit-scrollbar { width: 8px; }
@@ -117,13 +118,25 @@
 
         /* --- Canvas --- */
         .main-view {
-            flex-grow: 1; overflow-y: auto; padding: 60px;
+            flex-grow: 1; overflow-y: auto; padding: 40px;
             background-color: #181818;
             background-image: radial-gradient(#2a2a2a 1px, transparent 1px);
             background-size: 20px 20px;
-            display: flex; flex-direction: column; align-items: flex-start;
+            display: flex; flex-direction: column; align-items: flex-start; gap: 60px;
         }
         
+        .map-section {
+            width: 100%;
+        }
+        .map-title {
+            font-size: 18px; font-weight: bold; color: #fff; 
+            border-bottom: 2px solid #444; padding-bottom: 8px; margin-bottom: 20px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .instance-tag {
+            background: #333; padding: 2px 8px; border-radius: 4px; font-size: 12px; color: #aaa; font-weight: normal;
+        }
+
         /* --- Hierarchy --- */
         .hierarchy-box { margin-bottom: 20px; border-radius: 6px; position: relative; }
         .box-label {
@@ -134,7 +147,7 @@
         }
         .box-label:hover { transform: scale(1.1); color: #fff !important; text-shadow: 0 0 5px white;}
 
-        .socket-box { border: 2px solid var(--socket-border); padding: 30px 20px 20px 20px; margin-bottom: 50px; }
+        .socket-box { border: 2px solid var(--socket-border); padding: 30px 20px 20px 20px; margin-bottom: 0; }
         .socket-label { background: var(--bg); color: var(--socket-border); border: 1px solid var(--socket-border); font-size: 14px; }
 
         .numa-box { 
@@ -203,21 +216,12 @@
         }
         .ind-bar { flex-grow: 1; height: 100%; }
 
-        /* --- CUSTOM TOOLTIP --- */
+        /* --- TOOLTIP --- */
         #tooltip {
-            position: fixed;
-            display: none;
-            background: rgba(25, 25, 25, 0.95);
-            border: 1px solid #555;
-            padding: 10px;
-            border-radius: 5px;
-            color: #fff;
-            font-size: 13px;
-            z-index: 1000;
-            pointer-events: none;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-            white-space: nowrap;
-            backdrop-filter: blur(2px);
+            position: fixed; display: none; background: rgba(25, 25, 25, 0.95);
+            border: 1px solid #555; padding: 10px; border-radius: 5px; color: #fff;
+            font-size: 13px; z-index: 1000; pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5); white-space: nowrap; backdrop-filter: blur(2px);
         }
         .tooltip-header { font-weight: bold; margin-bottom: 5px; color: #fff; border-bottom: 1px solid #444; padding-bottom: 3px;}
         .tooltip-row { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
@@ -238,20 +242,13 @@
         <textarea id="inputData" placeholder="=== Подключение к ... ===&#10;>>> 1. LSCPU -E&#10;..."></textarea>
         <button class="btn-action" onclick="render()">Построить карту</button>
     </div>
-
     <hr style="border: 0; border-top: 1px solid #333; width: 100%; margin: 10px 0;">
-
     <div>
         <h3>2. Инструменты</h3>
-        <div class="hint">
-            <b>LKM + Drag:</b> Рисовать<br>
-            <b>Ctrl + Drag:</b> Стереть
-        </div>
+        <div class="hint"><b>LKM + Drag:</b> Рисовать | <b>Ctrl + Drag:</b> Стереть</div>
         <div id="palette" class="palette-grid"></div>
     </div>
-
     <hr style="border: 0; border-top: 1px solid #333; width: 100%; margin: 10px 0;">
-
     <div class="output-wrapper">
         <h3>3. Конфиг</h3>
         <button class="btn-action btn-copy" onclick="copyConfig()">Скопировать конфиг</button>
@@ -268,7 +265,6 @@
 <div id="tooltip"></div>
 
 <script>
-    // --- ROLES ---
     const ROLES = [
         { id: 'sys_os',   name: 'System (OS)',   color: '#607d8b' }, 
         { id: 'net_irq',  name: 'net0 (IRQ)',    color: '#d500f9' }, 
@@ -283,11 +279,17 @@
     ];
 
     let activeTool = ROLES[3];
-    let coreData = {}; 
+    
+    // Data structures for Multi-Instance
+    let globalGeometry = {}; // Socket -> Node -> L3 -> [Cores]
     let coreNumaMap = {};
     let netNumaNodes = new Set();
-    let detectedInstances = new Set();
     let serverName = '';
+    
+    // instances['Physical'] = { cpu: Set(tags) }
+    // instances['AFX3'] = { cpu: Set(tags) }
+    let instances = {}; 
+    
     let isMouseDown = false; 
     const tooltipEl = document.getElementById('tooltip');
 
@@ -324,24 +326,23 @@
         return Array.from(res);
     }
 
-    function addTag(cpu, tag) {
+    function addTag(instanceName, cpu, tag) {
         if (!cpu) return;
-        if (!coreData[cpu]) coreData[cpu] = new Set();
-        coreData[cpu].add(tag);
+        if (!instances[instanceName]) instances[instanceName] = {};
+        if (!instances[instanceName][cpu]) instances[instanceName][cpu] = new Set();
+        instances[instanceName][cpu].add(tag);
     }
 
     function parse(text) {
-        const tree = {}; 
+        globalGeometry = {}; 
         coreNumaMap = {};
         netNumaNodes = new Set();
-        detectedInstances = new Set();
         serverName = '';
-        
-        let runtimeConfigFound = false;
-        let ignoreNetSection = false; 
+        instances = { 'Physical': {} }; // Always have a Physical layer
 
         const lines = text.split('\n');
         let mode = 'none'; 
+        let currentInstance = null; // Track which instance we are parsing in Instance overview
 
         for (let line of lines) {
             line = line.trim();
@@ -349,21 +350,12 @@
 
             if (line.startsWith('=== Подключение к')) {
                 const parts = line.split(' ');
-                if (parts.length >= 4) {
-                    serverName = parts[3].replace('.qb.loc', '');
-                }
+                if (parts.length >= 4) serverName = parts[3].replace('.qb.loc', '');
             }
 
             if (line.includes('>>> 1. LSCPU')) { mode = 'lscpu'; continue; }
             if (line.includes('>>> 2. NETWORK')) { mode = 'network'; continue; }
-            if (line.includes('>>> 3. RUNTIME CONFIG')) { 
-                mode = 'runtime'; 
-                if (!runtimeConfigFound) {
-                    coreData = {}; 
-                    runtimeConfigFound = true;
-                }
-                continue; 
-            }
+            if (line.includes('>>> 3. RUNTIME CONFIG')) { mode = 'runtime'; continue; }
 
             // --- 1. LSCPU ---
             if (mode === 'lscpu') {
@@ -383,67 +375,38 @@
                     const cParts = cacheStr.split(':');
                     if (cParts.length >= 4) l3id = cParts[3];
                 }
-                if(!tree[socket]) tree[socket] = {};
-                if(!tree[socket][node]) tree[socket][node] = {};
-                if(!tree[socket][node][l3id]) tree[socket][node][l3id] = [];
-                tree[socket][node][l3id].push(cpu);
+                if(!globalGeometry[socket]) globalGeometry[socket] = {};
+                if(!globalGeometry[socket][node]) globalGeometry[socket][node] = {};
+                if(!globalGeometry[socket][node][l3id]) globalGeometry[socket][node][l3id] = [];
+                globalGeometry[socket][node][l3id].push(cpu);
                 
-                if(!runtimeConfigFound) {
-                    if(!coreData[cpu]) coreData[cpu] = new Set();
-                    if (parseInt(cpu) === 0) coreData[cpu].add('sys_os');
-                }
-            }
-
-            // --- 2. NETWORK ---
-            if (mode === 'network') {
-                const match = line.match(/^(-?\d+)$/);
-                if (match) {
-                    const val = parseInt(match[1]);
-                    if (val >= 0) netNumaNodes.add(val.toString());
-                }
+                // Default heuristic (Physical layer)
+                if (parseInt(cpu) === 0) addTag('Physical', cpu, 'sys_os');
             }
 
             // --- 3. RUNTIME CONFIG ---
             if (mode === 'runtime') {
-                if (line.includes('topology information')) {
-                    ignoreNetSection = true;
-                }
-                if (line.includes('Network interfaces cpus')) {
-                    ignoreNetSection = false;
-                }
                 
-                // DETECT INSTANCES (Lines ending in : inside runtime config section)
-                // Looks for "AFX3:" or "RFQ0:"
+                // Detect Instance Headers: "AFX3:"
                 const instanceMatch = line.match(/^(\w+):$/);
                 if (instanceMatch) {
-                    // Filter out generic headers
                     const name = instanceMatch[1];
-                    if(name !== 'Overview' && name !== 'Instance') {
-                         detectedInstances.add(name);
+                    if(name !== 'Overview' && name !== 'Instance' && name !== 'Cpus') {
+                         currentInstance = name;
+                         if (!instances[currentInstance]) instances[currentInstance] = {};
+                    } else if (name === 'Overview') {
+                        currentInstance = 'Physical'; // Switch context to Physical for Overview section
                     }
                 }
 
-                // Strategy A: Per-CPU lines
-                if (line.includes("'cpu_id':")) {
-                    const idMatch = line.match(/'cpu_id':\s*(\d+)/);
-                    if (idMatch) {
-                        const cpu = idMatch[1];
-                        if (!line.includes("'isolated': True")) addTag(cpu, 'sys_os');
-                        if (line.includes("AllRobots")) addTag(cpu, 'ar');
-                        else if (line.includes("Robot")) addTag(cpu, 'robot'); 
-                        if (line.includes("Gateway")) addTag(cpu, 'gateway');
-                        if (line.includes("Trash")) addTag(cpu, 'trash');
-                        if (line.includes("Formula")) addTag(cpu, 'formula');
-                        if (line.includes("RemoteFormula")) addTag(cpu, 'rf');
-                        if (line.includes("ClickHouse")) addTag(cpu, 'click');
-                        if (line.includes("Udp")) addTag(cpu, 'udp');
-                        if (line.includes("net_cpu")) addTag(cpu, 'net_irq');
-                    }
-                }
-
-                // Strategy B: Aggregated Lists
+                // Strategy A: Per-CPU lines (Global view, often redundant but good fallback)
+                // We add these to 'Physical' mostly, or try to guess. 
+                // BUT, to keep distinct maps, we rely more on Instance Overview section.
+                
+                // Strategy B: Aggregated Lists (The Gold Mine)
+                // 'GatewaysDefault': [6, 7]
                 const dictMatch = line.match(/'(\w+)':\s*\[([\d,\s]+)\]/);
-                if (dictMatch) {
+                if (dictMatch && currentInstance && currentInstance !== 'Physical') {
                     const key = dictMatch[1];
                     const coresStr = dictMatch[2];
                     const cores = coresStr.split(',').map(x => x.trim());
@@ -458,70 +421,86 @@
                     if (key === 'TrashCPU') roleId = 'trash';
                     if (key === 'UdpReceiveCores' || key === 'UdpSendCores') roleId = 'udp';
 
-                    if (roleId) cores.forEach(c => addTag(c, roleId));
+                    if (roleId) cores.forEach(c => addTag(currentInstance, c, roleId));
                 }
 
-                // Strategy C: Overview Sections
+                // Strategy C: Physical/Global Overview
                 if (line.startsWith('System cpus:')) {
                     const rangeStr = line.replace('System cpus:', '').trim();
-                    parseRangeStr(rangeStr).forEach(c => addTag(c.toString(), 'sys_os'));
+                    parseRangeStr(rangeStr).forEach(c => addTag('Physical', c.toString(), 'sys_os'));
                 }
                 
-                if (line.startsWith('net') && line.includes(':') && !ignoreNetSection) {
-                    const parts = line.split(':');
-                    if (parts.length >= 2) {
-                        parseRangeStr(parts[1].trim()).forEach(c => addTag(c.toString(), 'net_irq'));
-                    }
+                // IRQ parsing
+                if (line.startsWith('net') && line.includes(':')) {
+                    // Check if we are in the "Numa network interfaces topology information" section
+                    // This section tells us the NUMA Node, NOT the IRQ cores necessarily.
+                    // But standard "Network interfaces cpus:" tells us IRQ.
+                    // We need to be careful.
                 }
-            }
-        }
-        
-        if (netNumaNodes.size === 0) {
-            for (const [cpu, tags] of Object.entries(coreData)) {
-                if (tags.has('net_irq')) {
-                    const node = coreNumaMap[cpu];
-                    if (node !== undefined) netNumaNodes.add(node);
-                }
-            }
-        }
 
-        return tree;
+                // Explicit Network NUMA Detection (New Fix)
+                // Looks for "Numa network interfaces topology information:" followed by "net0: 0-23"
+                if (line.includes('topology information')) {
+                   // Just a header
+                }
+                // If we see "net0: 0-23" and we suspect it's topology info (usually at the end)
+                // We map these cores to their NUMA node.
+                if (line.startsWith('net') && line.includes(':')) {
+                     const parts = line.split(':');
+                     if (parts.length >= 2) {
+                        const rangeStr = parts[1].trim();
+                        const cores = parseRangeStr(rangeStr);
+                        
+                        // Heuristic: If this range covers a whole NUMA node, it's the Topology Info.
+                        // If it's small (2,4), it's IRQ affinity.
+                        
+                        // Check if these cores match IRQ count (usually small) vs Topology (huge)
+                        if (cores.length > 8) {
+                            // Likely Topology Info -> Detect Node
+                            const nodeCounts = {};
+                            cores.forEach(c => {
+                                const n = coreNumaMap[c];
+                                if (n !== undefined) nodeCounts[n] = (nodeCounts[n]||0) + 1;
+                            });
+                            // Find dominant node
+                            let maxNode = -1; let maxCount = 0;
+                            for(const [n, count] of Object.entries(nodeCounts)) {
+                                if(count > maxCount) { maxCount = count; maxNode = n; }
+                            }
+                            if (maxNode !== -1) netNumaNodes.add(maxNode);
+                        } else {
+                            // Likely IRQ Affinity -> Add to Physical Map
+                            cores.forEach(c => addTag('Physical', c.toString(), 'net_irq'));
+                        }
+                     }
+                }
+            }
+        }
+        return globalGeometry;
     }
 
-    function applyTool(cpu, forceAdd = true, isEraser = false) {
-        if (!coreData[cpu]) coreData[cpu] = new Set();
+    function applyTool(instanceName, cpu, forceAdd = true, isEraser = false) {
+        if (!instances[instanceName]) instances[instanceName] = {};
+        if (!instances[instanceName][cpu]) instances[instanceName][cpu] = new Set();
         
         if (isEraser) {
-            coreData[cpu].clear();
+            instances[instanceName][cpu].clear();
         } else {
-            if (coreData[cpu].has(activeTool.id) && !forceAdd) {
-                coreData[cpu].delete(activeTool.id);
+            if (instances[instanceName][cpu].has(activeTool.id) && !forceAdd) {
+                instances[instanceName][cpu].delete(activeTool.id);
             } else {
-                coreData[cpu].add(activeTool.id);
+                instances[instanceName][cpu].add(activeTool.id);
             }
         }
-        updateCoreVisual(cpu);
+        updateCoreVisual(instanceName, cpu);
         updateStats();
     }
 
-    function selectGroup(element) {
-        const parent = element.parentElement;
-        const cores = parent.querySelectorAll('.core');
-        cores.forEach(c => {
-            const cpu = c.dataset.cpu;
-            if(!coreData[cpu]) coreData[cpu] = new Set();
-            coreData[cpu].add(activeTool.id);
-            updateCoreVisual(cpu);
-        });
-        updateStats();
-    }
-
-    // --- TOOLTIP HANDLERS ---
-    function showTooltip(e, cpu) {
-        const tags = coreData[cpu];
+    function showTooltip(e, instanceName, cpu) {
+        const tags = instances[instanceName]?.[cpu];
         if (!tags || tags.size === 0) return;
 
-        let html = `<div class="tooltip-header">Core ${cpu} Roles:</div>`;
+        let html = `<div class="tooltip-header">Core ${cpu} (${instanceName}):</div>`;
         tags.forEach(tid => {
              const r = ROLES.find(x => x.id === tid);
              if(r) {
@@ -542,13 +521,13 @@
         tooltipEl.style.display = 'none';
     }
 
-    function updateCoreVisual(cpu) {
-        const el = document.getElementById(`core-${cpu}`);
+    function updateCoreVisual(instanceName, cpu) {
+        const el = document.getElementById(`core-${instanceName}-${cpu}`);
         if (!el) return;
-        const tags = coreData[cpu];
+        const tags = instances[instanceName]?.[cpu] || new Set();
         const ind = el.querySelector('.indicators');
         ind.innerHTML = ''; 
-        
+
         if (tags.size === 0) {
             el.classList.add('is-isolated');
             el.style.border = '1px solid #555';
@@ -574,89 +553,126 @@
 
     function render() {
         const txt = document.getElementById('inputData').value;
-        const data = parse(txt);
+        const geom = parse(txt); // Parses data and populates 'instances'
         const cvs = document.getElementById('canvas');
         cvs.innerHTML = '';
 
-        if(Object.keys(data).length === 0) {
-            const msg = document.createElement('div');
-            msg.innerHTML = '<div style="padding:20px; text-align:center; color:#888;">Нет данных CPU или неверный формат.</div>';
-            cvs.appendChild(msg);
+        if(Object.keys(geom).length === 0) {
+            cvs.innerHTML = '<div style="color:#888;">Нет данных CPU.</div>';
             return;
         }
 
-        Object.keys(data).sort((a,b)=>a-b).forEach(s => {
-            const sBox = document.createElement('div');
-            sBox.className = 'hierarchy-box socket-box';
-            sBox.innerHTML = `<div class="box-label socket-label" onclick="selectGroup(this)">SOCKET ${s}</div>`;
+        // --- RENDER LOOP FOR EACH INSTANCE ---
+        // Order: Physical first, then alphabetical instances
+        const instKeys = Object.keys(instances).filter(k => k !== 'Physical').sort();
+        const allKeys = ['Physical', ...instKeys];
 
-            Object.keys(data[s]).sort((a,b)=>a-b).forEach(n => {
-                const nBox = document.createElement('div');
-                let isNet = netNumaNodes.has(n);
-                nBox.className = 'hierarchy-box numa-box' + (isNet ? ' is-network-node' : '');
-                let numaHeaderHtml = `<div class="box-label numa-label" onclick="selectGroup(this)">NUMA ${n}</div>`;
-                if (isNet) numaHeaderHtml += `<div class="nic-badge" title="Network Attached">NETWORK NODE</div>`;
-                nBox.innerHTML = numaHeaderHtml;
+        allKeys.forEach(instName => {
+            const section = document.createElement('div');
+            section.className = 'map-section';
+            
+            const title = document.createElement('div');
+            title.className = 'map-title';
+            title.innerHTML = `<span>${instName === 'Physical' ? 'Physical Layer (OS/Net)' : instName}</span> <span class="instance-tag">${instName}</span>`;
+            section.appendChild(title);
 
-                Object.keys(data[s][n]).sort((a,b)=>parseInt(a)-parseInt(b)).forEach(c => {
-                    const l3Box = document.createElement('div');
-                    l3Box.className = 'hierarchy-box l3-box';
-                    l3Box.innerHTML = `<div class="box-label l3-label" onclick="selectGroup(this)">L3 #${c}</div>`;
+            // Draw Geometry for this instance
+            Object.keys(geom).sort((a,b)=>a-b).forEach(s => {
+                const sBox = document.createElement('div');
+                sBox.className = 'hierarchy-box socket-box';
+                sBox.innerHTML = `<div class="box-label socket-label">SOCKET ${s}</div>`;
 
-                    data[s][n][c].forEach(cpu => {
-                        const cell = document.createElement('div');
-                        cell.className = 'core is-isolated';
-                        cell.id = `core-${cpu}`;
-                        cell.dataset.cpu = cpu;
-                        cell.setAttribute('draggable', 'false'); 
-                        cell.innerHTML = `<div class="core-num">${cpu}</div><div class="indicators"></div>`;
-                        
-                        cell.onmousedown = (e) => {
-                            isMouseDown = true;
-                            const isEraser = e.ctrlKey || e.metaKey;
-                            applyTool(cpu, false, isEraser); 
-                        };
-                        cell.onmouseenter = (e) => {
-                            if(isMouseDown) {
+                Object.keys(geom[s]).sort((a,b)=>a-b).forEach(n => {
+                    const nBox = document.createElement('div');
+                    let isNet = netNumaNodes.has(n);
+                    // Network highlight applies to Physical layer primarily, but useful on all
+                    nBox.className = 'hierarchy-box numa-box' + (isNet ? ' is-network-node' : '');
+                    let numaHeaderHtml = `<div class="box-label numa-label">NUMA ${n}</div>`;
+                    if (isNet) numaHeaderHtml += `<div class="nic-badge" title="Network Attached">NETWORK NODE</div>`;
+                    nBox.innerHTML = numaHeaderHtml;
+
+                    Object.keys(geom[s][n]).sort((a,b)=>parseInt(a)-parseInt(b)).forEach(c => {
+                        const l3Box = document.createElement('div');
+                        l3Box.className = 'hierarchy-box l3-box';
+                        l3Box.innerHTML = `<div class="box-label l3-label">L3 #${c}</div>`;
+
+                        geom[s][n][c].forEach(cpu => {
+                            const cell = document.createElement('div');
+                            cell.className = 'core is-isolated';
+                            cell.id = `core-${instName}-${cpu}`; // Unique ID per instance map
+                            cell.dataset.cpu = cpu;
+                            cell.setAttribute('draggable', 'false'); 
+                            cell.innerHTML = `<div class="core-num">${cpu}</div><div class="indicators"></div>`;
+                            
+                            // Handlers
+                            cell.onmousedown = (e) => {
+                                isMouseDown = true;
                                 const isEraser = e.ctrlKey || e.metaKey;
-                                applyTool(cpu, true, isEraser);
-                            }
-                            showTooltip(e, cpu);
-                        };
-                        cell.onmousemove = moveTooltip;
-                        cell.onmouseleave = hideTooltip;
-                        cell.ondragstart = () => false;
+                                applyTool(instName, cpu, false, isEraser); 
+                            };
+                            cell.onmouseenter = (e) => {
+                                if(isMouseDown) {
+                                    const isEraser = e.ctrlKey || e.metaKey;
+                                    applyTool(instName, cpu, true, isEraser);
+                                }
+                                showTooltip(e, instName, cpu);
+                            };
+                            cell.onmousemove = moveTooltip;
+                            cell.onmouseleave = hideTooltip;
+                            cell.ondragstart = () => false;
 
-                        l3Box.appendChild(cell);
+                            l3Box.appendChild(cell);
+                        });
+                        nBox.appendChild(l3Box);
                     });
-                    nBox.appendChild(l3Box);
+                    sBox.appendChild(nBox);
                 });
-                sBox.appendChild(nBox);
+                section.appendChild(sBox);
             });
-            cvs.appendChild(sBox);
+            cvs.appendChild(section);
         });
 
-        Object.keys(coreData).forEach(cpu => updateCoreVisual(cpu));
+        // Initial Paint
+        allKeys.forEach(inst => {
+            if(instances[inst]) {
+                Object.keys(instances[inst]).forEach(cpu => updateCoreVisual(inst, cpu));
+            }
+        });
         updateStats();
     }
 
     function updateStats() {
         let txt = '';
-        if (serverName) txt += `# Config for ${serverName}`;
-        if (detectedInstances.size > 0) {
-            txt += ` [Instances: ${Array.from(detectedInstances).join(', ')}]`;
+        if (serverName) txt += `# Config for ${serverName}\n`;
+        
+        // Loop through non-Physical instances for config generation
+        const instKeys = Object.keys(instances).filter(k => k !== 'Physical').sort();
+        
+        // 1. Physical/System Stats
+        if(instances['Physical']) {
+            txt += `\n### Physical / OS Layer ###\n`;
+            const phys = instances['Physical'];
+            // Group by role
+            const roles = {};
+            for(const [cpu, tags] of Object.entries(phys)) {
+                tags.forEach(t => {
+                    if(!roles[t]) roles[t] = [];
+                    roles[t].push(parseInt(cpu));
+                });
+            }
+            if(roles['sys_os']) txt += `System (OS): [${roles['sys_os'].sort((a,b)=>a-b).join(', ')}]\n`;
+            if(roles['net_irq']) txt += `IRQ (Net):   [${roles['net_irq'].sort((a,b)=>a-b).join(', ')}]\n`;
         }
-        txt += '\n';
 
-        const isolatedCores = [];
-        const roleCores = {}; 
-        const robotPools = {}; 
+        // 2. Instances Stats
+        instKeys.forEach(inst => {
+            txt += `\n### Instance: ${inst} ###\n`;
+            const roleCores = {};
+            const robotPools = {};
+            const data = instances[inst];
 
-        for (const [cpu, tags] of Object.entries(coreData)) {
-            const cpuInt = parseInt(cpu);
-            if (tags.size === 0) {
-                isolatedCores.push(cpuInt);
-            } else {
+            for (const [cpu, tags] of Object.entries(data)) {
+                const cpuInt = parseInt(cpu);
                 tags.forEach(t => {
                     if (t === 'robot') {
                         const node = coreNumaMap[cpu] || 'U';
@@ -668,25 +684,20 @@
                     }
                 });
             }
-        }
-        const sortedNodes = Object.keys(robotPools).sort((a,b)=>a-b);
-        if (sortedNodes.length > 0) {
+
+            const sortedNodes = Object.keys(robotPools).sort((a,b)=>a-b);
             sortedNodes.forEach(node => {
-                const cores = robotPools[node].sort((a,b)=>a-b);
-                txt += `Robot_Pool_Node${node}:\n  [${cores.join(', ')}]\n\n`;
+                txt += `Robot_Pool_Node${node}: [${robotPools[node].sort((a,b)=>a-b).join(', ')}]\n`;
             });
-        }
-        ROLES.forEach(role => {
-            if (role.id === 'robot') return;
-            if (roleCores[role.id] && roleCores[role.id].length > 0) {
-                roleCores[role.id].sort((a,b)=>a-b);
-                txt += `${role.name}:\n  [${roleCores[role.id].join(', ')}]\n\n`;
-            }
+
+            ROLES.forEach(role => {
+                if (role.id === 'robot') return;
+                if (roleCores[role.id] && roleCores[role.id].length > 0) {
+                    txt += `${role.name}: [${roleCores[role.id].sort((a,b)=>a-b).join(', ')}]\n`;
+                }
+            });
         });
-        if (isolatedCores.length > 0) {
-            isolatedCores.sort((a,b)=>a-b);
-            txt += `Isolated (Default):\n  [${isolatedCores.join(', ')}]\n`;
-        }
+
         document.getElementById('output').innerText = txt;
     }
     
