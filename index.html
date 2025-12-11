@@ -915,8 +915,10 @@
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+        // Sanitize server name for filename
+        const sanitizedServerName = (serverName || 'unknown').replace(/[^a-zA-Z0-9-_]/g, '_');
         a.href = url;
-        a.download = `cpu-config-${serverName || 'unknown'}-${timestamp}.json`;
+        a.download = `cpu-config-${sanitizedServerName}-${timestamp}.json`;
         a.click();
         URL.revokeObjectURL(url);
     }
@@ -991,7 +993,10 @@
 
                 // Error: Gateway not on network NUMA node
                 if (tags.has('gateway') && netNodes.length > 0 && numaNode !== undefined) {
-                    if (!netNodes.includes(numaNode)) {
+                    // Ensure type consistency for comparison
+                    const numaNodeStr = numaNode.toString();
+                    const netNodesStr = netNodes.map(n => n.toString());
+                    if (!netNodesStr.includes(numaNodeStr)) {
                         errors.push(`[${instName}] Gateway на ядре ${cpu} (NUMA ${numaNode}) не находится на сетевой NUMA ноде (${netNodes.join(', ')})`);
                     }
                 }
