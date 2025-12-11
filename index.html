@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>HFT Mapper v1.6 (Auto-Coloring)</title>
+    <title>HFT Mapper v17 (Smart Config Parsing)</title>
     <style>
         :root {
             --bg: #1e1e1e;
@@ -211,9 +211,7 @@
     <div>
         <h3>1. Данные</h3>
         <div class="hint">
-            Подключись к <b>duty.virt.qb.loc</b>:
-            <span class="cmd-block">cpu-map $BS</span>
-            Скопируй весь вывод и вставь ниже.
+            Вставь полный вывод <code>cpu-map</code> (lscpu, network, runtime config):
         </div>
         <textarea id="inputData" placeholder="=== Подключение к ... ===&#10;>>> 1. LSCPU -E&#10;..."></textarea>
         <button class="btn-action" onclick="render()">Построить карту</button>
@@ -251,9 +249,9 @@
         { id: 'net_irq',  name: 'net0 (IRQ)',    color: '#00bcf2' },
         { id: 'udp',      name: 'UDP',           color: '#00e5ff' },
         { id: 'robot',    name: 'Robot',         color: '#e81123' },
+        { id: 'ar',       name: 'AR',            color: '#d13438' }, /* AllRobotsThCPU */
         { id: 'gateway',  name: 'Gateway',       color: '#107c10' },
-        { id: 'ar',       name: 'AR',            color: '#d13438' },
-        { id: 'rf',       name: 'RF (Remote)',   color: '#008080' }, /* Renamed slightly for clarity */
+        { id: 'rf',       name: 'RF (Remote)',   color: '#008080' }, /* RemoteFormula */
         { id: 'click',    name: 'Clickhouse',    color: '#ffcc00' },
         { id: 'formula',  name: 'Formula',       color: '#ffffff' },
         { id: 'trash',    name: 'Trash',         color: '#8a6d3b' }
@@ -283,13 +281,30 @@
         pContainer.appendChild(el);
     });
 
+    // --- Helper: Parse Range String "0-1,30-31" to Array [0,1,30,31] ---
+    function parseRangeStr(str) {
+        const res = new Set();
+        const parts = str.split(',');
+        parts.forEach(p => {
+            p = p.trim();
+            if(p.includes('-')) {
+                const [start, end] = p.split('-').map(x=>parseInt(x));
+                for(let i=start; i<=end; i++) res.add(i);
+            } else {
+                const val = parseInt(p);
+                if(!isNaN(val)) res.add(val);
+            }
+        });
+        return Array.from(res);
+    }
+
     function parse(text) {
         const tree = {}; 
         coreNumaMap = {};
         netNumaNodes = new Set();
         serverName = '';
         
-        // Reset Logic: If we find runtime config, we might want to clear default heuristics
+        // Reset logic for runtime config
         let runtimeConfigFound = false;
 
         const lines = text.split('\n');
@@ -310,15 +325,14 @@
             if (line.includes('>>> 2. NETWORK')) { mode = 'network'; continue; }
             if (line.includes('>>> 3. RUNTIME CONFIG')) { 
                 mode = 'runtime'; 
-                // !!! Clear existing heuristic colors (like sys_os on core 0) because we have real data now
                 if (!runtimeConfigFound) {
-                    coreData = {}; // Full reset of colors
+                    coreData = {}; // Full reset: we will trust runtime config completely
                     runtimeConfigFound = true;
                 }
                 continue; 
             }
 
-            // --- 1. LSCPU PARSER (Geometry) ---
+            // --- 1. LSCPU ---
             if (mode === 'lscpu') {
                 if (line.startsWith('CPU')) continue;
                 const parts = line.split(/\s+/);
@@ -341,53 +355,94 @@
                 if(!tree[socket][node][l3id]) tree[socket][node][l3id] = [];
                 tree[socket][node][l3id].push(cpu);
                 
-                // Only set default if we haven't found runtime config yet
+                // Fallback coloring ONLY if runtime config is missing
                 if(!runtimeConfigFound) {
                     if(!coreData[cpu]) coreData[cpu] = new Set();
                     if (parseInt(cpu) === 0) coreData[cpu].add('sys_os');
                 }
             }
 
-            // --- 2. NETWORK PARSER ---
+            // --- 2. NETWORK (NUMA) ---
             if (mode === 'network') {
                 const match = line.match(/^(-?\d+)$/);
                 if (match) {
                     const val = parseInt(match[1]);
+                    // Ignore -1 here. We will deduce it later if needed.
                     if (val >= 0) netNumaNodes.add(val.toString());
                 }
             }
 
-            // --- 3. RUNTIME PARSER (Bender Info) ---
+            // --- 3. RUNTIME (Overview & Instance) ---
             if (mode === 'runtime') {
-                // Parse lines like: {'cpu_id': 2, 'isolated': True, 'net_cpu': ['net0']}
-                if (!line.startsWith('{')) continue;
+                // Parse "Instance overview" dictionary lines: 'Key': [list]
+                // Regex: 'KeyName': [1, 2, 3]
+                const dictMatch = line.match(/'(\w+)':\s*\[([\d,\s]+)\]/);
+                if (dictMatch) {
+                    const key = dictMatch[1];
+                    const coresStr = dictMatch[2];
+                    const cores = coresStr.split(',').map(x => x.trim());
 
-                // Extract CPU ID
-                const idMatch = line.match(/'cpu_id':\s*(\d+)/);
-                if (!idMatch) continue;
-                const cpu = idMatch[1];
+                    let roleId = null;
+                    if (key === 'AllRobotsThCPU') roleId = 'ar';
+                    if (key === 'ClickHouseCores') roleId = 'click';
+                    if (key === 'Formula') roleId = 'formula';
+                    if (key === 'GatewaysDefault') roleId = 'gateway';
+                    if (key === 'RemoteFormulaCPU') roleId = 'rf';
+                    if (key === 'RobotsDefault') roleId = 'robot';
+                    if (key === 'TrashCPU') roleId = 'trash';
+                    if (key === 'UdpReceiveCores' || key === 'UdpSendCores') roleId = 'udp';
 
-                if (!coreData[cpu]) coreData[cpu] = new Set();
-
-                // Logic: If 'isolated': True is NOT present, it's a System Core
-                if (!line.includes("'isolated': True")) {
-                    coreData[cpu].add('sys_os');
+                    if (roleId) {
+                        cores.forEach(c => {
+                            if (!coreData[c]) coreData[c] = new Set();
+                            coreData[c].add(roleId);
+                        });
+                    }
                 }
 
-                // Map roles based on string content
-                if (line.includes("net_cpu")) coreData[cpu].add('net_irq');
-                if (line.includes("Udp")) coreData[cpu].add('udp'); // Covers Send/Receive
-                if (line.includes("Trash")) coreData[cpu].add('trash');
-                
-                // Formula Logic
-                if (line.includes("'Formula'")) coreData[cpu].add('formula'); 
-                if (line.includes("RemoteFormula")) coreData[cpu].add('rf'); // Separate color for Remote
-                
-                if (line.includes("Gateway")) coreData[cpu].add('gateway');
-                if (line.includes("Robot") || line.includes("AllRobots")) coreData[cpu].add('robot');
-                if (line.includes("ClickHouse")) coreData[cpu].add('click');
+                // Parse "Overview" section
+                // 1. System cpus: 0-1,30-31
+                if (line.startsWith('System cpus:')) {
+                    const rangeStr = line.replace('System cpus:', '').trim();
+                    const sysCores = parseRangeStr(rangeStr);
+                    sysCores.forEach(c => {
+                        const cs = c.toString();
+                        if (!coreData[cs]) coreData[cs] = new Set();
+                        coreData[cs].add('sys_os');
+                    });
+                }
+
+                // 2. Network interfaces cpus (IRQ)
+                // Looks for "net0: 2,4"
+                if (line.startsWith('net')) {
+                    const parts = line.split(':');
+                    if (parts.length >= 2) {
+                        const rangeStr = parts[1].trim();
+                        const irqCores = parseRangeStr(rangeStr);
+                        irqCores.forEach(c => {
+                             const cs = c.toString();
+                             if (!coreData[cs]) coreData[cs] = new Set();
+                             coreData[cs].add('net_irq');
+                        });
+                    }
+                }
             }
         }
+        
+        // --- SMART INFERENCE: If Network Numa is -1 (empty set), guess from IRQ cores ---
+        if (netNumaNodes.size === 0) {
+            // Find all cores marked as 'net_irq'
+            const irqNodes = new Set();
+            for (const [cpu, tags] of Object.entries(coreData)) {
+                if (tags.has('net_irq')) {
+                    const node = coreNumaMap[cpu];
+                    if (node !== undefined) irqNodes.add(node);
+                }
+            }
+            // If we found any nodes associated with IRQ cores, highlight them
+            irqNodes.forEach(n => netNumaNodes.add(n));
+        }
+
         return tree;
     }
 
@@ -451,7 +506,7 @@
 
     function render() {
         const txt = document.getElementById('inputData').value;
-        // Do NOT reset coreData here, because parse() manages it intelligently
+        // Do NOT reset coreData here, parse() handles it
         const data = parse(txt);
         const cvs = document.getElementById('canvas');
         cvs.innerHTML = '';
