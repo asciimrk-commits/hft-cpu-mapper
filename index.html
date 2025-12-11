@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>HFT Mapper v14 (UI Fixes)</title>
+    <title>HFT Mapper v1.5 (UI Layout Fix)</title>
     <style>
         :root {
             --bg: #1e1e1e;
@@ -38,34 +38,28 @@
             user-select: none;
         }
         
-        /* --- Sidebar Layout (Flex Fix) --- */
+        /* --- Sidebar Layout (Fixed + Scroll) --- */
         .sidebar {
             width: 380px; 
             background: var(--panel);
             border-right: 1px solid var(--border);
             display: flex;
-            flex-direction: column; /* Вертикальный стек */
+            flex-direction: column; 
             padding: 20px;
             gap: 15px;
             box-shadow: 2px 0 10px rgba(0,0,0,0.3);
             z-index: 10;
             height: 100vh; 
             box-sizing: border-box;
+            
+            /* ВАЖНО: Если экран маленький, сайдбар будет скроллиться целиком */
+            overflow-y: auto; 
         }
 
-        /* Fixed Height Sections */
-        .section-fixed {
-            flex-shrink: 0; /* Не сжиматься */
-        }
-
-        /* Flexible Section (Config) */
-        .section-flex {
-            display: flex;
-            flex-direction: column;
-            flex-grow: 1;    /* Занимать всё оставшееся место */
-            min-height: 0;   /* Магия для работы скролла внутри флекса */
-            margin-bottom: 0;
-        }
+        /* Scrollbar styling for sidebar */
+        .sidebar::-webkit-scrollbar { width: 8px; }
+        .sidebar::-webkit-scrollbar-track { background: #252526; }
+        .sidebar::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
 
         h3 { margin: 0 0 8px 0; color: #fff; font-size: 16px; text-transform: uppercase; letter-spacing: 1px; }
         
@@ -77,11 +71,14 @@
             background: #000; color: #ce9178; padding: 2px 6px; border-radius: 3px; font-family: monospace; display: block; margin-top: 4px;
         }
 
+        /* INPUT: Сделали компактнее */
         textarea#inputData {
             background: #111; color: #9cdcfe; border: 1px solid var(--border);
-            padding: 10px; height: 140px; /* Чуть уменьшил высоту для компактности */
+            padding: 10px; 
+            height: 70px; /* Компактная высота */
+            min-height: 70px; 
             font-family: monospace; font-size: 11px;
-            white-space: pre; resize: none; width: 100%; box-sizing: border-box;
+            white-space: pre; resize: vertical; width: 100%; box-sizing: border-box;
         }
         
         button.btn-action {
@@ -104,14 +101,20 @@
         .palette-item.active { background: #444; border-color: #fff; }
         .swatch { width: 12px; height: 12px; border-radius: 50%; }
 
-        /* --- Output (Scrollable) --- */
+        /* --- Output Box (Fix) --- */
+        .output-wrapper {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1; /* Пытается занять все место */
+            min-height: 350px; /* ГАРАНТИЯ ВЫСОТЫ: Не меньше 350px */
+        }
+
         .output-box {
             font-family: monospace; font-size: 12px; color: #aaa; white-space: pre-wrap;
             background: #111; padding: 10px; border: 1px solid var(--border);
-            
-            /* Scroll Logic */
-            flex-grow: 1;      /* Растягиваться на всю высоту родителя */
-            overflow-y: auto;  /* Скроллить, если контент не влезает */
+            height: 100%; /* Занимает всю высоту обертки */
+            overflow-y: auto; 
+            box-sizing: border-box;
         }
         .output-box::-webkit-scrollbar { width: 8px; }
         .output-box::-webkit-scrollbar-track { background: #1e1e1e; }
@@ -210,7 +213,7 @@
 <body>
 
 <div class="sidebar">
-    <div class="section-fixed">
+    <div>
         <h3>1. Данные</h3>
         <div class="hint">
             Подключись к <b>duty.virt.qb.loc</b>:
@@ -222,7 +225,7 @@
 
     <hr style="border: 0; border-top: 1px solid #333; width: 100%; margin: 10px 0;">
 
-    <div class="section-fixed">
+    <div>
         <h3>2. Инструменты</h3>
         <div class="hint">
             <b>LKM + Drag:</b> Рисовать<br>
@@ -233,7 +236,7 @@
 
     <hr style="border: 0; border-top: 1px solid #333; width: 100%; margin: 10px 0;">
 
-    <div class="section-flex">
+    <div class="output-wrapper">
         <h3>3. Конфиг</h3>
         <button class="btn-action btn-copy" onclick="copyConfig()">Скопировать конфиг</button>
         <div class="output-box" id="output"></div>
@@ -333,7 +336,6 @@
             }
 
             if (mode === 'network') {
-                // Если парсер встретит число >= 0, добавит в сет
                 const match = line.match(/^(-?\d+)$/);
                 if (match) {
                     const val = parseInt(match[1]);
