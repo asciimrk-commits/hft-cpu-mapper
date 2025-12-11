@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>HFT Mapper v10 (Network Awareness)</title>
+    <title>HFT Mapper v11 (Custom Input)</title>
     <style>
         :root {
             --bg: #1e1e1e;
@@ -63,7 +63,7 @@
 
         textarea#inputData {
             background: #111; color: #9cdcfe; border: 1px solid var(--border);
-            padding: 10px; height: 100px; font-family: monospace; font-size: 10px;
+            padding: 10px; height: 150px; font-family: monospace; font-size: 10px;
             white-space: pre; resize: none; width: 100%; box-sizing: border-box;
         }
         
@@ -103,6 +103,12 @@
             background-color: #181818;
             background-image: radial-gradient(#2a2a2a 1px, transparent 1px);
             background-size: 20px 20px;
+            display: flex; flex-direction: column; align-items: flex-start;
+        }
+        
+        .server-title {
+            font-size: 24px; color: #fff; margin-bottom: 20px; font-weight: bold;
+            border-bottom: 2px solid #007acc; padding-bottom: 5px;
         }
 
         /* --- Hierarchy --- */
@@ -172,10 +178,9 @@
     <div class="section-header">
         <h3>1. Данные</h3>
         <div class="hint">
-            1. Вставь <code>lscpu -e</code><br>
-            2. Вставь <code>grep . /sys/class/net/*/device/numa_node</code>
+            Вставь полный вывод скрипта <code>cpu-map</code> целиком.
         </div>
-        <textarea id="inputData" placeholder="Вставь оба вывода сюда..."></textarea>
+        <textarea id="inputData" placeholder="=== Подключение к ... ===&#10;>>> 1. LSCPU -E&#10;..."></textarea>
         <button class="btn-action" onclick="render()">Построить карту</button>
     </div>
 
@@ -196,7 +201,7 @@
 
 <div class="main-view" id="canvas">
     <div style="color:#555; margin-top:100px; text-align:center; font-size:1.2em;">
-        &larr; Жду данные lscpu + network
+        &larr; Вставь лог скрипта слева
     </div>
 </div>
 
@@ -217,7 +222,8 @@
     let activeTool = ROLES[3];
     let coreData = {}; 
     let coreNumaMap = {};
-    let netMap = {}; // { numaNodeId: ["eth0", "eno1"] }
+    let netNumaNodes = new Set(); // Stores specific NUMA nodes used for Network
+    let serverName = '';
     let isMouseDown = false; 
 
     document.addEventListener('mouseup', () => { isMouseDown = false; });
@@ -240,57 +246,86 @@
     function parse(text) {
         const tree = {}; 
         coreNumaMap = {};
-        netMap = {}; // Reset net map
-
+        netNumaNodes = new Set();
+        serverName = '';
+        
         const lines = text.split('\n');
+        let mode = 'none'; // 'lscpu', 'network'
         let firstCoreFound = false;
 
         for (let line of lines) {
             line = line.trim();
             if (!line) continue;
 
-            // --- 1. NETWORK PARSER ---
-            // Matches: /sys/class/net/eth0/device/numa_node:0
-            if (line.includes('/sys/class/net/')) {
-                // Regex extraction
-                const match = line.match(/\/sys\/class\/net\/([^\/]+)\/device\/numa_node:(-?\d+)/);
-                if (match) {
-                    const iface = match[1];
-                    const node = match[2];
-                    
-                    // Filter useless interfaces
-                    if (iface === 'lo' || node === '-1') continue;
-                    
-                    if (!netMap[node]) netMap[node] = [];
-                    netMap[node].push(iface);
+            // --- HEADER PARSER ---
+            if (line.startsWith('=== Подключение к')) {
+                // Extract "TRA0" from "=== Подключение к TRA0.qb.loc ==="
+                const parts = line.split(' ');
+                if (parts.length >= 4) {
+                    serverName = parts[3].replace('.qb.loc', '');
                 }
-                continue; // Done with this line
             }
 
-            // --- 2. LSCPU PARSER ---
-            if (isNaN(parseInt(line[0]))) continue;
-            const parts = line.split(/\s+/);
-            if (parts.length < 5) continue;
-            const cpu = parts[0]; const node = parts[1]; const socket = parts[2]; const cacheStr = parts[4]; 
-
-            if (node === '-' || socket === '-') continue;
-            coreNumaMap[cpu] = node;
-            
-            let l3id = 'U';
-            if (cacheStr.includes(':')) {
-                const cParts = cacheStr.split(':');
-                if (cParts.length >= 4) l3id = cParts[3];
+            // --- SECTION DETECTION ---
+            if (line.includes('>>> 1. LSCPU')) {
+                mode = 'lscpu';
+                continue;
+            }
+            if (line.includes('>>> 2. NETWORK')) {
+                mode = 'network';
+                continue;
             }
 
-            if(!tree[socket]) tree[socket] = {};
-            if(!tree[socket][node]) tree[socket][node] = {};
-            if(!tree[socket][node][l3id]) tree[socket][node][l3id] = [];
-            tree[socket][node][l3id].push(cpu);
-            
-            if(!coreData[cpu]) coreData[cpu] = new Set();
-            if (cpu === '0' || (!firstCoreFound && parseInt(cpu) === 0)) {
-                coreData[cpu].add('sys_os');
-                firstCoreFound = true;
+            // --- PARSING LSCPU ---
+            if (mode === 'lscpu') {
+                if (line.startsWith('CPU')) continue; // Skip header
+                
+                // Format: CPU NODE SOCKET CORE L1:L2:L3 ONLINE
+                // Example: 0 0 0 0 0:0:0:0 yes
+                const parts = line.split(/\s+/);
+                if (parts.length < 6) continue;
+
+                const cpu = parts[0];
+                const node = parts[1];
+                const socket = parts[2];
+                const cacheStr = parts[4];
+                const online = parts[5];
+
+                // Ignore offline CPUs or incomplete lines
+                if (online === 'no' || node === '-' || socket === '-') continue;
+
+                coreNumaMap[cpu] = node;
+                
+                // Extract L3 Cache ID (4th part of cache string)
+                let l3id = 'U';
+                if (cacheStr.includes(':')) {
+                    const cParts = cacheStr.split(':');
+                    if (cParts.length >= 4) l3id = cParts[3];
+                }
+
+                if(!tree[socket]) tree[socket] = {};
+                if(!tree[socket][node]) tree[socket][node] = {};
+                if(!tree[socket][node][l3id]) tree[socket][node][l3id] = [];
+                tree[socket][node][l3id].push(cpu);
+                
+                // Default Assignment for Core 0 (and sibling if exists)
+                if(!coreData[cpu]) coreData[cpu] = new Set();
+                if (parseInt(cpu) === 0) {
+                    coreData[cpu].add('sys_os');
+                }
+            }
+
+            // --- PARSING NETWORK ---
+            if (mode === 'network') {
+                // Logic: If line contains a number >= 0, treat as NUMA node
+                // If it is -1, ignore.
+                const match = line.match(/^(-?\d+)$/); // Matches single number like "0", "1", "-1"
+                if (match) {
+                    const val = parseInt(match[1]);
+                    if (val >= 0) {
+                        netNumaNodes.add(val.toString());
+                    }
+                }
             }
         }
         return tree;
@@ -355,8 +390,17 @@
         const cvs = document.getElementById('canvas');
         cvs.innerHTML = '';
 
+        if(serverName) {
+            const title = document.createElement('div');
+            title.className = 'server-title';
+            title.innerText = serverName;
+            cvs.appendChild(title);
+        }
+
         if(Object.keys(data).length === 0) {
-            cvs.innerHTML = '<div style="padding:20px; text-align:center">Нет данных CPU.</div>';
+            const msg = document.createElement('div');
+            msg.innerHTML = '<div style="padding:20px; text-align:center; color:#888;">Нет данных CPU или неверный формат.</div>';
+            cvs.appendChild(msg);
             return;
         }
 
@@ -370,9 +414,9 @@
                 nBox.className = 'hierarchy-box numa-box';
                 let numaHeaderHtml = `<div class="box-label numa-label" onclick="selectGroup(this)">NUMA ${n}</div>`;
                 
-                // RENDER NET BADGE
-                if (netMap[n] && netMap[n].length > 0) {
-                    numaHeaderHtml += `<div class="nic-badge" title="Attached Interfaces">[NIC: ${netMap[n].join(', ')}]</div>`;
+                // RENDER NET BADGE IF DETECTED
+                if (netNumaNodes.has(n)) {
+                    numaHeaderHtml += `<div class="nic-badge" title="Network Attached">[NET]</div>`;
                 }
                 
                 nBox.innerHTML = numaHeaderHtml;
@@ -411,6 +455,8 @@
 
     function updateStats() {
         let txt = '';
+        if (serverName) txt += `# Config for ${serverName}\n`;
+        
         const isolatedCores = [];
         const roleCores = {}; 
         const robotPools = {}; 
