@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>HFT Mapper v0.2.1 (Visual Tooltips & AR Color)</title>
+    <title>HFT Mapper v0.2.2 (Updated Instructions)</title>
     <style>
         :root {
             --bg: #1e1e1e;
@@ -61,11 +61,11 @@
         h3 { margin: 0 0 8px 0; color: #fff; font-size: 16px; text-transform: uppercase; letter-spacing: 1px; }
         
         .hint { 
-            font-size: 12px; color: #bbb; margin-bottom: 8px; line-height: 1.4; 
-            background: #2b2b2b; padding: 8px; border-radius: 4px; border: 1px solid #444;
+            font-size: 12px; color: #bbb; margin-bottom: 8px; line-height: 1.5; 
+            background: #2b2b2b; padding: 10px; border-radius: 4px; border: 1px solid #444;
         }
         .cmd-block {
-            background: #000; color: #ce9178; padding: 2px 6px; border-radius: 3px; font-family: monospace; display: block; margin-top: 4px;
+            background: #000; color: #ce9178; padding: 4px 8px; border-radius: 3px; font-family: monospace; display: block; margin-top: 5px; font-weight: bold; border: 1px solid #444;
         }
 
         textarea#inputData {
@@ -231,7 +231,9 @@
     <div>
         <h3>1. Данные</h3>
         <div class="hint">
-            Вставь полный вывод <code>cpu-map</code> (lscpu, network, runtime config):
+            1. Зайди на <b>duty.virt.qb.loc</b><br>
+            2. Выполни: <span class="cmd-block">cpu-map $BS</span>
+            3. Вставь вывод ниже:
         </div>
         <textarea id="inputData" placeholder="=== Подключение к ... ===&#10;>>> 1. LSCPU -E&#10;..."></textarea>
         <button class="btn-action" onclick="render()">Построить карту</button>
@@ -266,13 +268,13 @@
 <div id="tooltip"></div>
 
 <script>
-    // --- UPDATED ROLES WITH NEW AR COLOR ---
+    // --- ROLES ---
     const ROLES = [
         { id: 'sys_os',   name: 'System (OS)',   color: '#607d8b' }, 
         { id: 'net_irq',  name: 'net0 (IRQ)',    color: '#d500f9' }, 
         { id: 'udp',      name: 'UDP',           color: '#ff6d00' }, 
         { id: 'robot',    name: 'Robot',         color: '#e81123' },
-        { id: 'ar',       name: 'AR',            color: '#c2185b' }, /* NEW: Vivid Magenta for AR */
+        { id: 'ar',       name: 'AR',            color: '#c2185b' }, 
         { id: 'gateway',  name: 'Gateway',       color: '#107c10' },
         { id: 'rf',       name: 'RF (Remote)',   color: '#008080' }, 
         { id: 'click',    name: 'Clickhouse',    color: '#ffcc00' },
@@ -501,7 +503,7 @@
         updateStats();
     }
 
-    // --- NEW TOOLTIP FUNCTIONS ---
+    // --- TOOLTIP HANDLERS ---
     function showTooltip(e, cpu) {
         const tags = coreData[cpu];
         if (!tags || tags.size === 0) return;
@@ -519,7 +521,6 @@
     }
 
     function moveTooltip(e) {
-        // Offset tooltip from cursor
         tooltipEl.style.top = (e.clientY + 15) + 'px';
         tooltipEl.style.left = (e.clientX + 15) + 'px';
     }
@@ -527,7 +528,6 @@
     function hideTooltip() {
         tooltipEl.style.display = 'none';
     }
-    // ---------------------------
 
     function updateCoreVisual(cpu) {
         const el = document.getElementById(`core-${cpu}`);
@@ -536,8 +536,6 @@
         const ind = el.querySelector('.indicators');
         ind.innerHTML = ''; 
         
-        // Removed old title attribute, now using custom tooltip handlers
-
         if (tags.size === 0) {
             el.classList.add('is-isolated');
             el.style.border = '1px solid #555';
@@ -600,25 +598,21 @@
                         cell.setAttribute('draggable', 'false'); 
                         cell.innerHTML = `<div class="core-num">${cpu}</div><div class="indicators"></div>`;
                         
-                        // --- EVENT HANDLERS (Paint + Tooltip) ---
                         cell.onmousedown = (e) => {
                             isMouseDown = true;
                             const isEraser = e.ctrlKey || e.metaKey;
                             applyTool(cpu, false, isEraser); 
                         };
                         cell.onmouseenter = (e) => {
-                            // Paint if dragging
                             if(isMouseDown) {
                                 const isEraser = e.ctrlKey || e.metaKey;
                                 applyTool(cpu, true, isEraser);
                             }
-                            // Show custom tooltip
                             showTooltip(e, cpu);
                         };
                         cell.onmousemove = moveTooltip;
                         cell.onmouseleave = hideTooltip;
                         cell.ondragstart = () => false;
-                        // ----------------------------------------
 
                         l3Box.appendChild(cell);
                     });
