@@ -258,6 +258,24 @@
             </div>
         </div>
     </div>
+
+    <hr style="border: 0; border-top: 1px solid #333; width: 100%; margin: 10px 0;">
+
+    <div>
+        <h3>5. Импорт/Экспорт</h3>
+        <button class="btn-action" onclick="exportConfig()" style="margin-bottom: 8px;">Экспорт JSON</button>
+        <button class="btn-action" onclick="handleImportClick()">Импорт JSON</button>
+    </div>
+
+    <hr style="border: 0; border-top: 1px solid #333; width: 100%; margin: 10px 0;">
+
+    <div>
+        <h3>6. Валидация</h3>
+        <button class="btn-action" onclick="validateConfig()" style="margin-bottom: 10px;">Проверить</button>
+        <div id="validation-output" style="font-size: 12px; padding: 10px; background: #111; border: 1px solid #333; border-radius: 4px; min-height: 60px;">
+            <div style="color: #666;">Нажмите "Проверить" для валидации конфигурации</div>
+        </div>
+    </div>
 </div>
 
 <div class="main-view" id="canvas">
@@ -292,6 +310,8 @@
     
     let isMouseDown = false; 
     const tooltipEl = document.getElementById('tooltip');
+    let numaDistances = {}; // NUMA distance matrix: {node: {otherNode: distance}}
+    let isolatedCores = new Set(); // Set of isolated core IDs
 
     document.addEventListener('mouseup', () => { isMouseDown = false; });
     
@@ -340,6 +360,8 @@
         serverName = '';
         instances = { 'Physical': {} }; 
         cpuLoadMap = {}; // Reset Load
+        numaDistances = {}; // Reset NUMA distances
+        isolatedCores = new Set(); // Reset isolated cores
 
         const lines = text.split('\n');
         let mode = 'none'; 
@@ -356,9 +378,12 @@
             }
 
             if (line.includes('>>> 1. LSCPU')) { mode = 'lscpu'; continue; }
-            if (line.includes('>>> 2. NETWORK')) { mode = 'network'; continue; }
-            if (line.includes('>>> 3. RUNTIME CONFIG')) { mode = 'runtime'; continue; }
-            if (line.includes('>>> 4. CPU LOAD')) { mode = 'cpuload'; continue; }
+            if (line.includes('>>> 2. NUMA TOPOLOGY')) { mode = 'numatopo'; continue; }
+            if (line.includes('>>> 3. ISOLATED CORES')) { mode = 'isolated'; continue; }
+            if (line.includes('>>> 4. NETWORK')) { mode = 'network'; continue; }
+            if (line.includes('>>> 5. RUNTIME CONFIG')) { mode = 'runtime'; continue; }
+            if (line.includes('>>> 6. TOP INTERRUPTS')) { mode = 'interrupts'; continue; }
+            if (line.includes('>>> 7. CPU LOAD')) { mode = 'cpuload'; continue; }
 
             // --- 1. LSCPU ---
             if (mode === 'lscpu') {
@@ -386,7 +411,33 @@
                 if (parseInt(cpu) === 0) addTag('Physical', cpu, 'sys_os');
             }
 
-            // --- 3. RUNTIME ---
+            // --- 2. NUMA TOPOLOGY ---
+            if (mode === 'numatopo') {
+                // Parse distance matrix from numactl -H output
+                // Example line: "node   0   1   2   3"
+                // or:           "  0:  10  21  21  21"
+                if (line.startsWith('node distances:')) continue;
+                
+                const distMatch = line.match(/^\s*(\d+):\s+([\d\s]+)$/);
+                if (distMatch) {
+                    const fromNode = distMatch[1];
+                    const distances = distMatch[2].trim().split(/\s+/);
+                    if (!numaDistances[fromNode]) numaDistances[fromNode] = {};
+                    distances.forEach((dist, idx) => {
+                        numaDistances[fromNode][idx.toString()] = parseInt(dist);
+                    });
+                }
+            }
+
+            // --- 3. ISOLATED CORES ---
+            if (mode === 'isolated') {
+                if (line !== 'none' && line.length > 0) {
+                    const cores = parseRangeStr(line);
+                    cores.forEach(c => isolatedCores.add(c.toString()));
+                }
+            }
+
+            // --- 5. RUNTIME ---
             if (mode === 'runtime') {
                 const instanceMatch = line.match(/^(\w+):$/);
                 if (instanceMatch) {
@@ -449,37 +500,20 @@
                 }
             }
 
-            // --- 4. CPU LOAD (MPSTAT) ---
+            // --- 7. CPU LOAD (MPSTAT) ---
             if (mode === 'cpuload') {
-                // Ignore headers
+                // Ignore headers and summary lines
                 if (line.includes('CPU') || line.includes('all') || line.includes('Average')) continue;
                 
-                // Regex to capture CPU ID and %idle (usually last column)
-                // Format: 11:07:20 AM    0   10.00 ... 83.00
-                const parts = line.split(/\s+/);
-                // We assume the last column is %idle. Length varies if AM/PM is present.
-                if (parts.length > 3) {
-                    const idleStr = parts[parts.length - 1];
-                    const cpuStr = parts.length > 11 ? parts[1] : parts[0]; // Heuristic for timestamp presence
-                    
-                    // Better approach: Find the column index of CPU. usually index 1 or 0 depending on timestamp.
-                    // Let's iterate backwards. Last is idle.
-                    const idle = parseFloat(idleStr);
-                    
-                    // CPU ID is usually the first *integer* found in the line (skipping time)
-                    let cpuId = -1;
-                    for(let i=0; i<parts.length-1; i++) {
-                        // Skip time string like 11:00:00 or AM/PM
-                        if (parts[i].includes(':') || parts[i] === 'AM' || parts[i] === 'PM') continue;
-                        if (!isNaN(parseInt(parts[i]))) {
-                            cpuId = parts[i];
-                            break;
-                        }
-                    }
+                // Regex parser for mpstat output
+                // Format: [TIME] [AM/PM] CPU %usr %nice %sys %iowait %irq %soft %steal %guest %gnice %idle
+                const match = line.match(/(?:AM|PM)?\s*(\d+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)$/);
 
-                    if (cpuId !== -1 && !isNaN(idle)) {
-                        cpuLoadMap[cpuId] = (100 - idle).toFixed(1);
-                    }
+                if (match) {
+                    const cpuId = match[1];
+                    const idle = parseFloat(match[11]); 
+                    cpuLoadMap[cpuId] = (100 - idle).toFixed(1);
+                }
                 }
             }
         }
@@ -652,7 +686,36 @@
                     const nBox = document.createElement('div');
                     let isNet = netNumaNodes.has(n);
                     nBox.className = 'hierarchy-box numa-box' + (isNet ? ' is-network-node' : '');
-                    let numaHeaderHtml = `<div class="box-label numa-label">NUMA ${n}</div>`;
+                    
+                    // Build NUMA label with tier information
+                    let numaLabelText = `NUMA ${n}`;
+                    let numaLabelStyle = '';
+                    
+                    // Calculate tier if network node is known and distance data exists
+                    if (netNumaNodes.size > 0 && Object.keys(numaDistances).length > 0) {
+                        const netNode = Array.from(netNumaNodes)[0]; // Use first network node as reference
+                        if (numaDistances[netNode] && numaDistances[netNode][n] !== undefined) {
+                            const distance = numaDistances[netNode][n];
+                            let tierColor = '#666'; // Gray - Remote
+                            let tierName = 'Remote';
+                            
+                            if (distance <= 10) {
+                                tierColor = '#ffd700'; // Gold - Same NUMA
+                                tierName = 'Same NUMA';
+                            } else if (distance <= 21) {
+                                tierColor = '#c0c0c0'; // Silver - Same Socket
+                                tierName = 'Same Socket';
+                            } else if (distance <= 31) {
+                                tierColor = '#cd7f32'; // Bronze - Cross Socket
+                                tierName = 'Cross Socket';
+                            }
+                            
+                            numaLabelStyle = `background-color: ${tierColor}; color: #000; font-weight: bold;`;
+                            numaLabelText += ` [${tierName}]`;
+                        }
+                    }
+                    
+                    let numaHeaderHtml = `<div class="box-label numa-label" style="${numaLabelStyle}">${numaLabelText}</div>`;
                     if (isNet) numaHeaderHtml += `<div class="nic-badge" title="Network Attached">NETWORK NODE</div>`;
                     nBox.innerHTML = numaHeaderHtml;
 
@@ -813,6 +876,176 @@
             setTimeout(() => btn.innerText = original, 1000);
         });
     }
+
+    // Export configuration as JSON
+    function exportConfig() {
+        const config = {
+            version: "2.7",
+            serverName: serverName,
+            timestamp: new Date().toISOString(),
+            instances: {}
+        };
+
+        // Convert instances with Sets to arrays
+        Object.keys(instances).forEach(instName => {
+            config.instances[instName] = {};
+            Object.keys(instances[instName]).forEach(cpu => {
+                config.instances[instName][cpu] = Array.from(instances[instName][cpu]);
+            });
+        });
+
+        const json = JSON.stringify(config, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+        a.href = url;
+        a.download = `cpu-config-${serverName || 'unknown'}-${timestamp}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    // Import configuration from JSON
+    function importConfig(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const config = JSON.parse(e.target.result);
+                
+                // Restore instances
+                instances = {};
+                Object.keys(config.instances).forEach(instName => {
+                    instances[instName] = {};
+                    Object.keys(config.instances[instName]).forEach(cpu => {
+                        instances[instName][cpu] = new Set(config.instances[instName][cpu]);
+                    });
+                });
+
+                // Restore server name if available
+                if (config.serverName) {
+                    serverName = config.serverName;
+                }
+
+                // Re-render
+                render();
+                
+                alert('Конфигурация успешно импортирована!');
+            } catch (err) {
+                alert('Ошибка при импорте конфигурации: ' + err.message);
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    // Handle file selection for import
+    function handleImportClick() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = (e) => {
+            if (e.target.files.length > 0) {
+                importConfig(e.target.files[0]);
+            }
+        };
+        input.click();
+    }
+
+    // Validate configuration
+    function validateConfig() {
+        const errors = [];
+        const warnings = [];
+
+        const physInstance = instances['Physical'];
+        if (!physInstance) {
+            document.getElementById('validation-output').innerHTML = '<div style="color: #aaa;">Нет данных для валидации</div>';
+            return;
+        }
+
+        // Get network NUMA nodes
+        const netNodes = Array.from(netNumaNodes);
+
+        // Check all instances
+        Object.keys(instances).forEach(instName => {
+            const inst = instances[instName];
+            
+            Object.keys(inst).forEach(cpu => {
+                const tags = inst[cpu];
+                const load = parseFloat(cpuLoadMap[cpu] || 0);
+                const numaNode = coreNumaMap[cpu];
+
+                // Error: Gateway not on network NUMA node
+                if (tags.has('gateway') && netNodes.length > 0 && numaNode !== undefined) {
+                    if (!netNodes.includes(numaNode)) {
+                        errors.push(`[${instName}] Gateway на ядре ${cpu} (NUMA ${numaNode}) не находится на сетевой NUMA ноде (${netNodes.join(', ')})`);
+                    }
+                }
+
+                // Error: AR and Trash on same core
+                if (tags.has('ar') && tags.has('trash')) {
+                    errors.push(`[${instName}] AR и Trash на одном ядре ${cpu} (запрещено по документации)`);
+                }
+
+                // Error: Formula and Trash on same core
+                if (tags.has('formula') && tags.has('trash')) {
+                    errors.push(`[${instName}] Formula и Trash на одном ядре ${cpu} (запрещено по документации)`);
+                }
+
+                // Warning: Load > 50% on gateway or robot cores
+                if ((tags.has('gateway') || tags.has('robot')) && load > 50) {
+                    warnings.push(`[${instName}] Нагрузка ${load}% на ядре ${cpu} с ${tags.has('gateway') ? 'Gateway' : 'Robot'} (> 50%)`);
+                }
+
+                // Warning: Load > 80% on any assigned core
+                if (tags.size > 0 && load > 80) {
+                    warnings.push(`[${instName}] Нагрузка ${load}% на назначенном ядре ${cpu} (> 80%)`);
+                }
+            });
+        });
+
+        // Display results
+        let html = '';
+        
+        if (errors.length === 0 && warnings.length === 0) {
+            html = '<div style="color: #4caf50; font-weight: bold;">✓ Конфигурация валидна</div>';
+        } else {
+            if (errors.length > 0) {
+                html += '<div style="color: #f44336; font-weight: bold; margin-bottom: 8px;">Ошибки:</div>';
+                errors.forEach(err => {
+                    html += `<div style="color: #f44336; margin-left: 10px; margin-bottom: 4px;">✗ ${err}</div>`;
+                });
+            }
+            
+            if (warnings.length > 0) {
+                html += '<div style="color: #ffeb3b; font-weight: bold; margin-top: 10px; margin-bottom: 8px;">Предупреждения:</div>';
+                warnings.forEach(warn => {
+                    html += `<div style="color: #ffeb3b; margin-left: 10px; margin-bottom: 4px;">⚠ ${warn}</div>`;
+                });
+            }
+        }
+
+        document.getElementById('validation-output').innerHTML = html;
+    }
+
+    // Drag and drop support for JSON import
+    document.body.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
+
+    document.body.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        if (e.dataTransfer.files.length > 0) {
+            const file = e.dataTransfer.files[0];
+            if (file.name.endsWith('.json')) {
+                importConfig(file);
+            } else {
+                alert('Пожалуйста, загрузите JSON файл');
+            }
+        }
+    });
+
 </script>
 </body>
 </html>
