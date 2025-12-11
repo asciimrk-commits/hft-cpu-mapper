@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>HFT Mapper v11 (Custom Input)</title>
+    <title>HFT Mapper v13 (Big Scale + Eraser)</title>
     <style>
         :root {
             --bg: #1e1e1e;
@@ -10,9 +10,15 @@
             --border: #333;
             --text: #ccc;
             
+            /* SIZING CONFIG */
+            --core-size: 60px;       /* Было 45px */
+            --core-font: 18px;       /* Было 14px */
+            --l3-width: 280px;       /* Ширина блока L3 под 4 больших ядра */
+            
             /* Hierarchy Colors */
             --socket-border: #ce9178; 
-            --numa-border: #c586c0;
+            --numa-border: #c586c0; 
+            --net-numa-border: #00bcf2; 
             --l3-border: #4ec9b0;
             --l3-bg: #2d2d30;
             
@@ -30,12 +36,12 @@
             height: 100vh;
             display: flex;
             overflow: hidden;
-            user-select: none;
+            user-select: none; /* Важно для драга */
         }
         
         /* --- Sidebar --- */
         .sidebar {
-            width: 360px;
+            width: 380px; 
             background: var(--panel);
             border-right: 1px solid var(--border);
             display: flex;
@@ -53,23 +59,25 @@
             display: flex; flex-direction: column; flex-grow: 1; min-height: 0; margin-bottom: 0;
         }
 
-        h3 { margin: 0 0 5px 0; color: #fff; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+        h3 { margin: 0 0 8px 0; color: #fff; font-size: 16px; text-transform: uppercase; letter-spacing: 1px; }
         
         .hint { 
-            font-size: 11px; color: #888; margin-bottom: 5px; line-height: 1.4; 
-            background: #222; padding: 5px; border-radius: 3px; border: 1px solid #333;
+            font-size: 13px; color: #bbb; margin-bottom: 10px; line-height: 1.5; 
+            background: #2b2b2b; padding: 10px; border-radius: 4px; border: 1px solid #444;
         }
-        .code-snippet { color: #ce9178; font-family: monospace; }
+        .cmd-block {
+            background: #000; color: #ce9178; padding: 2px 6px; border-radius: 3px; font-family: monospace; display: block; margin-top: 4px;
+        }
 
         textarea#inputData {
             background: #111; color: #9cdcfe; border: 1px solid var(--border);
-            padding: 10px; height: 150px; font-family: monospace; font-size: 10px;
+            padding: 10px; height: 180px; font-family: monospace; font-size: 11px;
             white-space: pre; resize: none; width: 100%; box-sizing: border-box;
         }
         
         button.btn-action {
-            background: #007acc; color: white; border: none; padding: 8px;
-            cursor: pointer; font-weight: bold; border-radius: 2px; font-size: 12px; width: 100%;
+            background: #007acc; color: white; border: none; padding: 10px;
+            cursor: pointer; font-weight: bold; border-radius: 2px; font-size: 13px; width: 100%;
         }
         button.btn-action:hover { background: #0062a3; }
         
@@ -77,19 +85,19 @@
         button.btn-copy:hover { background: #444; }
 
         /* --- Palette --- */
-        .palette-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .palette-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         .palette-item {
-            display: flex; align-items: center; gap: 10px; padding: 6px 10px;
-            cursor: pointer; font-size: 11px; background: #333; border-radius: 4px;
+            display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+            cursor: pointer; font-size: 12px; background: #333; border-radius: 4px;
             border: 1px solid transparent; transition: all 0.1s;
         }
         .palette-item:hover { background: #3e3e42; transform: translateY(-1px); }
         .palette-item.active { background: #444; border-color: #fff; }
-        .swatch { width: 10px; height: 10px; border-radius: 50%; }
+        .swatch { width: 12px; height: 12px; border-radius: 50%; }
 
         /* --- Output --- */
         .output-box {
-            font-family: monospace; font-size: 11px; color: #aaa; white-space: pre-wrap;
+            font-family: monospace; font-size: 12px; color: #aaa; white-space: pre-wrap;
             background: #111; padding: 10px; border: 1px solid var(--border);
             flex-grow: 1; overflow-y: auto;
         }
@@ -99,70 +107,89 @@
 
         /* --- Canvas --- */
         .main-view {
-            flex-grow: 1; overflow-y: auto; padding: 40px;
+            flex-grow: 1; overflow-y: auto; padding: 60px; /* Больше отступы */
             background-color: #181818;
             background-image: radial-gradient(#2a2a2a 1px, transparent 1px);
             background-size: 20px 20px;
             display: flex; flex-direction: column; align-items: flex-start;
         }
         
-        .server-title {
-            font-size: 24px; color: #fff; margin-bottom: 20px; font-weight: bold;
-            border-bottom: 2px solid #007acc; padding-bottom: 5px;
-        }
-
         /* --- Hierarchy --- */
-        .hierarchy-box { margin-bottom: 10px; border-radius: 4px; position: relative; }
+        .hierarchy-box { margin-bottom: 20px; border-radius: 6px; position: relative; }
         .box-label {
-            position: absolute; top: -9px; left: 10px;
-            padding: 0 6px; font-size: 10px; font-weight: bold;
+            position: absolute; top: -11px; left: 15px;
+            padding: 0 8px; font-size: 13px; font-weight: bold;
             cursor: pointer; border-radius: 2px; z-index: 5;
             transition: all 0.2s;
         }
         .box-label:hover { transform: scale(1.1); color: #fff !important; text-shadow: 0 0 5px white;}
 
-        .socket-box { border: 1px solid var(--socket-border); padding: 20px 10px 10px 10px; margin-bottom: 30px; }
-        .socket-label { background: var(--bg); color: var(--socket-border); border: 1px solid var(--socket-border); }
+        /* Socket Box */
+        .socket-box { border: 2px solid var(--socket-border); padding: 30px 20px 20px 20px; margin-bottom: 50px; }
+        .socket-label { background: var(--bg); color: var(--socket-border); border: 1px solid var(--socket-border); font-size: 14px; }
 
-        .numa-box { border: 1px solid var(--numa-border); padding: 20px 10px 10px 10px; display: flex; flex-wrap: wrap; gap: 15px; background: rgba(197, 134, 192, 0.02); }
+        /* NUMA Box */
+        .numa-box { 
+            border: 2px solid var(--numa-border); 
+            padding: 30px 20px 20px 20px; 
+            display: flex; flex-wrap: wrap; gap: 30px; /* Больше зазор между L3 */
+            background: rgba(197, 134, 192, 0.03); 
+            transition: all 0.3s;
+        }
         .numa-label { background: var(--bg); color: var(--numa-border); border: 1px solid var(--numa-border); }
 
-        /* Network Badges inside NUMA label area */
+        .numa-box.is-network-node {
+            border: 3px solid var(--net-numa-border); 
+            background: rgba(0, 188, 242, 0.1); 
+            box-shadow: 0 0 20px rgba(0, 188, 242, 0.2); 
+        }
+        .numa-box.is-network-node .numa-label {
+            color: var(--net-numa-border);
+            border-color: var(--net-numa-border);
+            background: #181818;
+            font-weight: 900;
+        }
+
         .nic-badge {
             display: inline-block;
             background: var(--net-badge-bg);
             color: var(--net-badge-text);
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 3px;
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 4px;
             margin-left: 10px;
             position: absolute;
-            top: -10px;
-            right: 10px;
+            top: -14px;
+            right: 20px;
             font-weight: bold;
-            box-shadow: 0 0 5px rgba(0,120,212, 0.5);
+            box-shadow: 0 0 10px rgba(0,120,212, 0.6);
             animation: pulse 2s infinite;
+            z-index: 6;
         }
         @keyframes pulse { 0% { opacity: 0.8; } 50% { opacity: 1; text-shadow: 0 0 5px white; } 100% { opacity: 0.8; } }
 
+        /* L3 Box */
         .l3-box {
             border: 1px dashed var(--l3-border); background: var(--l3-bg);
-            padding: 25px 8px 8px 8px; display: flex; flex-wrap: wrap; gap: 4px;
-            width: 140px; align-content: flex-start;
+            padding: 35px 12px 12px 12px; display: flex; flex-wrap: wrap; gap: 8px;
+            width: var(--l3-width); 
+            align-content: flex-start;
         }
         .l3-label { 
-            top: -9px; left: 50%; transform: translateX(-50%);
+            top: -12px; left: 50%; transform: translateX(-50%);
             background: var(--bg); color: var(--l3-border); border: 1px solid var(--l3-border); white-space: nowrap;
         }
 
+        /* Cores - SCALED UP */
         .core {
-            width: 30px; height: 30px; background: #252526; border: 1px solid #444;
+            width: var(--core-size); height: var(--core-size);
+            background: #252526; border: 1px solid #555;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
             cursor: crosshair; position: relative;
         }
         .core.is-isolated { opacity: 0.4; }
-        .core:hover { border-color: #fff; z-index: 100; }
-        .core-num { font-size: 11px; font-weight: bold; color: #ddd; z-index: 2; text-shadow: 0 1px 2px black;}
+        .core:hover { border-color: #fff; z-index: 100; box-shadow: 0 0 8px #fff; }
+        .core-num { font-size: var(--core-font); font-weight: bold; color: #ddd; z-index: 2; text-shadow: 0 1px 3px black;}
         
         .indicators {
             position: absolute; bottom: 0; left: 0; right: 0; height: 100%;
@@ -178,7 +205,9 @@
     <div class="section-header">
         <h3>1. Данные</h3>
         <div class="hint">
-            Вставь полный вывод скрипта <code>cpu-map</code> целиком.
+            Подключись к серверу <b>duty.virt.qb.loc</b> и выполни:
+            <span class="cmd-block">cpu-map $BS</span>
+            Скопируй весь вывод и вставь ниже.
         </div>
         <textarea id="inputData" placeholder="=== Подключение к ... ===&#10;>>> 1. LSCPU -E&#10;..."></textarea>
         <button class="btn-action" onclick="render()">Построить карту</button>
@@ -186,7 +215,10 @@
 
     <div class="section-tools">
         <h3>2. Инструменты</h3>
-        <div class="hint">LKM+Drag: Рисовать</div>
+        <div class="hint">
+            <b>LKM + Drag:</b> Рисовать<br>
+            <b>Ctrl + Drag:</b> Стереть (очистить ядро)
+        </div>
         <div id="palette" class="palette-grid"></div>
     </div>
 
@@ -200,8 +232,8 @@
 </div>
 
 <div class="main-view" id="canvas">
-    <div style="color:#555; margin-top:100px; text-align:center; font-size:1.2em;">
-        &larr; Вставь лог скрипта слева
+    <div style="color:#555; margin-top:100px; text-align:center; font-size:1.4em;">
+        &larr; Ожидаю данные...
     </div>
 </div>
 
@@ -222,7 +254,7 @@
     let activeTool = ROLES[3];
     let coreData = {}; 
     let coreNumaMap = {};
-    let netNumaNodes = new Set(); // Stores specific NUMA nodes used for Network
+    let netNumaNodes = new Set();
     let serverName = '';
     let isMouseDown = false; 
 
@@ -250,100 +282,80 @@
         serverName = '';
         
         const lines = text.split('\n');
-        let mode = 'none'; // 'lscpu', 'network'
-        let firstCoreFound = false;
+        let mode = 'none'; 
 
         for (let line of lines) {
             line = line.trim();
             if (!line) continue;
 
-            // --- HEADER PARSER ---
             if (line.startsWith('=== Подключение к')) {
-                // Extract "TRA0" from "=== Подключение к TRA0.qb.loc ==="
                 const parts = line.split(' ');
                 if (parts.length >= 4) {
                     serverName = parts[3].replace('.qb.loc', '');
                 }
             }
 
-            // --- SECTION DETECTION ---
-            if (line.includes('>>> 1. LSCPU')) {
-                mode = 'lscpu';
-                continue;
-            }
-            if (line.includes('>>> 2. NETWORK')) {
-                mode = 'network';
-                continue;
-            }
+            if (line.includes('>>> 1. LSCPU')) { mode = 'lscpu'; continue; }
+            if (line.includes('>>> 2. NETWORK')) { mode = 'network'; continue; }
 
-            // --- PARSING LSCPU ---
             if (mode === 'lscpu') {
-                if (line.startsWith('CPU')) continue; // Skip header
-                
-                // Format: CPU NODE SOCKET CORE L1:L2:L3 ONLINE
-                // Example: 0 0 0 0 0:0:0:0 yes
+                if (line.startsWith('CPU')) continue;
                 const parts = line.split(/\s+/);
                 if (parts.length < 6) continue;
-
                 const cpu = parts[0];
                 const node = parts[1];
                 const socket = parts[2];
                 const cacheStr = parts[4];
                 const online = parts[5];
-
-                // Ignore offline CPUs or incomplete lines
                 if (online === 'no' || node === '-' || socket === '-') continue;
 
                 coreNumaMap[cpu] = node;
-                
-                // Extract L3 Cache ID (4th part of cache string)
                 let l3id = 'U';
                 if (cacheStr.includes(':')) {
                     const cParts = cacheStr.split(':');
                     if (cParts.length >= 4) l3id = cParts[3];
                 }
-
                 if(!tree[socket]) tree[socket] = {};
                 if(!tree[socket][node]) tree[socket][node] = {};
                 if(!tree[socket][node][l3id]) tree[socket][node][l3id] = [];
                 tree[socket][node][l3id].push(cpu);
-                
-                // Default Assignment for Core 0 (and sibling if exists)
                 if(!coreData[cpu]) coreData[cpu] = new Set();
-                if (parseInt(cpu) === 0) {
-                    coreData[cpu].add('sys_os');
-                }
+                if (parseInt(cpu) === 0) coreData[cpu].add('sys_os');
             }
 
-            // --- PARSING NETWORK ---
             if (mode === 'network') {
-                // Logic: If line contains a number >= 0, treat as NUMA node
-                // If it is -1, ignore.
-                const match = line.match(/^(-?\d+)$/); // Matches single number like "0", "1", "-1"
+                const match = line.match(/^(-?\d+)$/);
                 if (match) {
                     const val = parseInt(match[1]);
-                    if (val >= 0) {
-                        netNumaNodes.add(val.toString());
-                    }
+                    if (val >= 0) netNumaNodes.add(val.toString());
                 }
             }
         }
         return tree;
     }
 
-    function applyTool(cpu, forceAdd = true) {
+    // UPDATED APPLY TOOL: Supports Eraser
+    function applyTool(cpu, forceAdd = true, isEraser = false) {
         if (!coreData[cpu]) coreData[cpu] = new Set();
-        if (coreData[cpu].has(activeTool.id) && !forceAdd) {
-            coreData[cpu].delete(activeTool.id);
+        
+        if (isEraser) {
+            // Wipe everything on this core
+            coreData[cpu].clear();
         } else {
-            coreData[cpu].add(activeTool.id);
+            // Normal Paint Logic
+            if (coreData[cpu].has(activeTool.id) && !forceAdd) {
+                coreData[cpu].delete(activeTool.id);
+            } else {
+                coreData[cpu].add(activeTool.id);
+            }
         }
         updateCoreVisual(cpu);
         updateStats();
     }
 
     function selectGroup(element) {
-        const cores = element.parentElement.querySelectorAll('.core');
+        const parent = element.parentElement;
+        const cores = parent.querySelectorAll('.core');
         cores.forEach(c => {
             const cpu = c.dataset.cpu;
             if(!coreData[cpu]) coreData[cpu] = new Set();
@@ -362,7 +374,7 @@
         
         if (tags.size === 0) {
             el.classList.add('is-isolated');
-            el.style.border = '1px solid #444';
+            el.style.border = '1px solid #555';
         } else {
             el.classList.remove('is-isolated');
             if(tags.size === 1) {
@@ -390,13 +402,6 @@
         const cvs = document.getElementById('canvas');
         cvs.innerHTML = '';
 
-        if(serverName) {
-            const title = document.createElement('div');
-            title.className = 'server-title';
-            title.innerText = serverName;
-            cvs.appendChild(title);
-        }
-
         if(Object.keys(data).length === 0) {
             const msg = document.createElement('div');
             msg.innerHTML = '<div style="padding:20px; text-align:center; color:#888;">Нет данных CPU или неверный формат.</div>';
@@ -411,14 +416,10 @@
 
             Object.keys(data[s]).sort((a,b)=>a-b).forEach(n => {
                 const nBox = document.createElement('div');
-                nBox.className = 'hierarchy-box numa-box';
+                let isNet = netNumaNodes.has(n);
+                nBox.className = 'hierarchy-box numa-box' + (isNet ? ' is-network-node' : '');
                 let numaHeaderHtml = `<div class="box-label numa-label" onclick="selectGroup(this)">NUMA ${n}</div>`;
-                
-                // RENDER NET BADGE IF DETECTED
-                if (netNumaNodes.has(n)) {
-                    numaHeaderHtml += `<div class="nic-badge" title="Network Attached">[NET]</div>`;
-                }
-                
+                if (isNet) numaHeaderHtml += `<div class="nic-badge" title="Network Attached">NETWORK NODE</div>`;
                 nBox.innerHTML = numaHeaderHtml;
 
                 Object.keys(data[s][n]).sort((a,b)=>parseInt(a)-parseInt(b)).forEach(c => {
@@ -431,15 +432,25 @@
                         cell.className = 'core is-isolated';
                         cell.id = `core-${cpu}`;
                         cell.dataset.cpu = cpu;
+                        // IMPORTANT: draggable="false" prevents ghost drag issues
+                        cell.setAttribute('draggable', 'false'); 
                         cell.innerHTML = `<div class="core-num">${cpu}</div><div class="indicators"></div>`;
                         
+                        // EVENT HANDLERS
                         cell.onmousedown = (e) => {
                             isMouseDown = true;
-                            applyTool(cpu, false); 
+                            // Check for Ctrl (Windows/Linux) or Meta (Mac Command)
+                            const isEraser = e.ctrlKey || e.metaKey;
+                            applyTool(cpu, false, isEraser); 
                         };
                         cell.onmouseenter = (e) => {
-                            if(isMouseDown) applyTool(cpu, true);
+                            if(isMouseDown) {
+                                const isEraser = e.ctrlKey || e.metaKey;
+                                applyTool(cpu, true, isEraser);
+                            }
                         };
+                        // Block native drag to allow JS drag painting
+                        cell.ondragstart = () => false;
 
                         l3Box.appendChild(cell);
                         updateCoreVisual(cpu);
@@ -456,7 +467,6 @@
     function updateStats() {
         let txt = '';
         if (serverName) txt += `# Config for ${serverName}\n`;
-        
         const isolatedCores = [];
         const roleCores = {}; 
         const robotPools = {}; 
@@ -478,7 +488,6 @@
                 });
             }
         }
-
         const sortedNodes = Object.keys(robotPools).sort((a,b)=>a-b);
         if (sortedNodes.length > 0) {
             sortedNodes.forEach(node => {
@@ -486,7 +495,6 @@
                 txt += `Robot_Pool_Node${node}:\n  [${cores.join(', ')}]\n\n`;
             });
         }
-
         ROLES.forEach(role => {
             if (role.id === 'robot') return;
             if (roleCores[role.id] && roleCores[role.id].length > 0) {
@@ -494,12 +502,10 @@
                 txt += `${role.name}:\n  [${roleCores[role.id].join(', ')}]\n\n`;
             }
         });
-
         if (isolatedCores.length > 0) {
             isolatedCores.sort((a,b)=>a-b);
             txt += `Isolated (Default):\n  [${isolatedCores.join(', ')}]\n`;
         }
-
         document.getElementById('output').innerText = txt;
     }
     
