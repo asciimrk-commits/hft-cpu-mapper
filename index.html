@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>HFT Mapper v10 (Network Awareness)</title>
+    <style>
+        :root {
+            --bg: #1e1e1e;
+            --panel: #252526;
+            --border: #333;
+            --text: #ccc;
+            
+            /* Hierarchy Colors */
+            --socket-border: #ce9178; 
+            --numa-border: #c586c0;
+            --l3-border: #4ec9b0;
+            --l3-bg: #2d2d30;
+            
+            /* Net Badge */
+            --net-badge-bg: #0078d4;
+            --net-badge-text: #fff;
+        }
+        
+        body {
+            font-family: 'Segoe UI', 'Consolas', monospace;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+            user-select: none;
+        }
+        
+        /* --- Sidebar --- */
+        .sidebar {
+            width: 360px;
+            background: var(--panel);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            gap: 15px;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.3);
+            z-index: 10;
+            height: 100vh; 
+            box-sizing: border-box;
+        }
+
+        .section-header, .section-tools { flex-shrink: 0; }
+        .section-config {
+            display: flex; flex-direction: column; flex-grow: 1; min-height: 0; margin-bottom: 0;
+        }
+
+        h3 { margin: 0 0 5px 0; color: #fff; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+        
+        .hint { 
+            font-size: 11px; color: #888; margin-bottom: 5px; line-height: 1.4; 
+            background: #222; padding: 5px; border-radius: 3px; border: 1px solid #333;
+        }
+        .code-snippet { color: #ce9178; font-family: monospace; }
+
+        textarea#inputData {
+            background: #111; color: #9cdcfe; border: 1px solid var(--border);
+            padding: 10px; height: 100px; font-family: monospace; font-size: 10px;
+            white-space: pre; resize: none; width: 100%; box-sizing: border-box;
+        }
+        
+        button.btn-action {
+            background: #007acc; color: white; border: none; padding: 8px;
+            cursor: pointer; font-weight: bold; border-radius: 2px; font-size: 12px; width: 100%;
+        }
+        button.btn-action:hover { background: #0062a3; }
+        
+        button.btn-copy { background: #333; border: 1px solid #555; color: #ccc; margin-bottom: 5px; }
+        button.btn-copy:hover { background: #444; }
+
+        /* --- Palette --- */
+        .palette-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .palette-item {
+            display: flex; align-items: center; gap: 10px; padding: 6px 10px;
+            cursor: pointer; font-size: 11px; background: #333; border-radius: 4px;
+            border: 1px solid transparent; transition: all 0.1s;
+        }
+        .palette-item:hover { background: #3e3e42; transform: translateY(-1px); }
+        .palette-item.active { background: #444; border-color: #fff; }
+        .swatch { width: 10px; height: 10px; border-radius: 50%; }
+
+        /* --- Output --- */
+        .output-box {
+            font-family: monospace; font-size: 11px; color: #aaa; white-space: pre-wrap;
+            background: #111; padding: 10px; border: 1px solid var(--border);
+            flex-grow: 1; overflow-y: auto;
+        }
+        .output-box::-webkit-scrollbar { width: 8px; }
+        .output-box::-webkit-scrollbar-track { background: #1e1e1e; }
+        .output-box::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+
+        /* --- Canvas --- */
+        .main-view {
+            flex-grow: 1; overflow-y: auto; padding: 40px;
+            background-color: #181818;
+            background-image: radial-gradient(#2a2a2a 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        /* --- Hierarchy --- */
+        .hierarchy-box { margin-bottom: 10px; border-radius: 4px; position: relative; }
+        .box-label {
+            position: absolute; top: -9px; left: 10px;
+            padding: 0 6px; font-size: 10px; font-weight: bold;
+            cursor: pointer; border-radius: 2px; z-index: 5;
+            transition: all 0.2s;
+        }
+        .box-label:hover { transform: scale(1.1); color: #fff !important; text-shadow: 0 0 5px white;}
+
+        .socket-box { border: 1px solid var(--socket-border); padding: 20px 10px 10px 10px; margin-bottom: 30px; }
+        .socket-label { background: var(--bg); color: var(--socket-border); border: 1px solid var(--socket-border); }
+
+        .numa-box { border: 1px solid var(--numa-border); padding: 20px 10px 10px 10px; display: flex; flex-wrap: wrap; gap: 15px; background: rgba(197, 134, 192, 0.02); }
+        .numa-label { background: var(--bg); color: var(--numa-border); border: 1px solid var(--numa-border); }
+
+        /* Network Badges inside NUMA label area */
+        .nic-badge {
+            display: inline-block;
+            background: var(--net-badge-bg);
+            color: var(--net-badge-text);
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-left: 10px;
+            position: absolute;
+            top: -10px;
+            right: 10px;
+            font-weight: bold;
+            box-shadow: 0 0 5px rgba(0,120,212, 0.5);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse { 0% { opacity: 0.8; } 50% { opacity: 1; text-shadow: 0 0 5px white; } 100% { opacity: 0.8; } }
+
+        .l3-box {
+            border: 1px dashed var(--l3-border); background: var(--l3-bg);
+            padding: 25px 8px 8px 8px; display: flex; flex-wrap: wrap; gap: 4px;
+            width: 140px; align-content: flex-start;
+        }
+        .l3-label { 
+            top: -9px; left: 50%; transform: translateX(-50%);
+            background: var(--bg); color: var(--l3-border); border: 1px solid var(--l3-border); white-space: nowrap;
+        }
+
+        .core {
+            width: 30px; height: 30px; background: #252526; border: 1px solid #444;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            cursor: crosshair; position: relative;
+        }
+        .core.is-isolated { opacity: 0.4; }
+        .core:hover { border-color: #fff; z-index: 100; }
+        .core-num { font-size: 11px; font-weight: bold; color: #ddd; z-index: 2; text-shadow: 0 1px 2px black;}
+        
+        .indicators {
+            position: absolute; bottom: 0; left: 0; right: 0; height: 100%;
+            display: flex; opacity: 0.6; z-index: 1;
+        }
+        .ind-bar { flex-grow: 1; height: 100%; }
+
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <div class="section-header">
+        <h3>1. Данные</h3>
+        <div class="hint">
+            1. Вставь <code>lscpu -e</code><br>
+            2. Вставь <code>grep . /sys/class/net/*/device/numa_node</code>
+        </div>
+        <textarea id="inputData" placeholder="Вставь оба вывода сюда..."></textarea>
+        <button class="btn-action" onclick="render()">Построить карту</button>
+    </div>
+
+    <div class="section-tools">
+        <h3>2. Инструменты</h3>
+        <div class="hint">LKM+Drag: Рисовать</div>
+        <div id="palette" class="palette-grid"></div>
+    </div>
+
+    <div class="section-config">
+        <div style="margin-top:10px; margin-bottom:5px;">
+            <h3>3. Конфиг</h3>
+        </div>
+        <button class="btn-action btn-copy" onclick="copyConfig()">Скопировать конфиг</button>
+        <div class="output-box" id="output"></div>
+    </div>
+</div>
+
+<div class="main-view" id="canvas">
+    <div style="color:#555; margin-top:100px; text-align:center; font-size:1.2em;">
+        &larr; Жду данные lscpu + network
+    </div>
+</div>
+
+<script>
+    const ROLES = [
+        { id: 'sys_os',   name: 'System (OS)',   color: '#0078d4' },
+        { id: 'net_irq',  name: 'net0 (IRQ)',    color: '#00bcf2' },
+        { id: 'udp',      name: 'UDP',           color: '#00e5ff' },
+        { id: 'robot',    name: 'Robot',         color: '#e81123' },
+        { id: 'gateway',  name: 'Gateway',       color: '#107c10' },
+        { id: 'ar',       name: 'AR',            color: '#d13438' },
+        { id: 'rf',       name: 'RF',            color: '#008080' },
+        { id: 'click',    name: 'Clickhouse',    color: '#ffcc00' },
+        { id: 'formula',  name: 'Formula',       color: '#ffffff' },
+        { id: 'trash',    name: 'Trash',         color: '#8a6d3b' }
+    ];
+
+    let activeTool = ROLES[3];
+    let coreData = {}; 
+    let coreNumaMap = {};
+    let netMap = {}; // { numaNodeId: ["eth0", "eno1"] }
+    let isMouseDown = false; 
+
+    document.addEventListener('mouseup', () => { isMouseDown = false; });
+    
+    // Init Palette
+    const pContainer = document.getElementById('palette');
+    ROLES.forEach(r => {
+        const el = document.createElement('div');
+        el.className = 'palette-item';
+        if(r.id === activeTool.id) el.classList.add('active');
+        el.innerHTML = `<div class="swatch" style="background:${r.color}"></div><span>${r.name}</span>`;
+        el.onmousedown = () => {
+            activeTool = r;
+            document.querySelectorAll('.palette-item').forEach(x => x.classList.remove('active'));
+            el.classList.add('active');
+        };
+        pContainer.appendChild(el);
+    });
+
+    function parse(text) {
+        const tree = {}; 
+        coreNumaMap = {};
+        netMap = {}; // Reset net map
+
+        const lines = text.split('\n');
+        let firstCoreFound = false;
+
+        for (let line of lines) {
+            line = line.trim();
+            if (!line) continue;
+
+            // --- 1. NETWORK PARSER ---
+            // Matches: /sys/class/net/eth0/device/numa_node:0
+            if (line.includes('/sys/class/net/')) {
+                // Regex extraction
+                const match = line.match(/\/sys\/class\/net\/([^\/]+)\/device\/numa_node:(-?\d+)/);
+                if (match) {
+                    const iface = match[1];
+                    const node = match[2];
+                    
+                    // Filter useless interfaces
+                    if (iface === 'lo' || node === '-1') continue;
+                    
+                    if (!netMap[node]) netMap[node] = [];
+                    netMap[node].push(iface);
+                }
+                continue; // Done with this line
+            }
+
+            // --- 2. LSCPU PARSER ---
+            if (isNaN(parseInt(line[0]))) continue;
+            const parts = line.split(/\s+/);
+            if (parts.length < 5) continue;
+            const cpu = parts[0]; const node = parts[1]; const socket = parts[2]; const cacheStr = parts[4]; 
+
+            if (node === '-' || socket === '-') continue;
+            coreNumaMap[cpu] = node;
+            
+            let l3id = 'U';
+            if (cacheStr.includes(':')) {
+                const cParts = cacheStr.split(':');
+                if (cParts.length >= 4) l3id = cParts[3];
+            }
+
+            if(!tree[socket]) tree[socket] = {};
+            if(!tree[socket][node]) tree[socket][node] = {};
+            if(!tree[socket][node][l3id]) tree[socket][node][l3id] = [];
+            tree[socket][node][l3id].push(cpu);
+            
+            if(!coreData[cpu]) coreData[cpu] = new Set();
+            if (cpu === '0' || (!firstCoreFound && parseInt(cpu) === 0)) {
+                coreData[cpu].add('sys_os');
+                firstCoreFound = true;
+            }
+        }
+        return tree;
+    }
+
+    function applyTool(cpu, forceAdd = true) {
+        if (!coreData[cpu]) coreData[cpu] = new Set();
+        if (coreData[cpu].has(activeTool.id) && !forceAdd) {
+            coreData[cpu].delete(activeTool.id);
+        } else {
+            coreData[cpu].add(activeTool.id);
+        }
+        updateCoreVisual(cpu);
+        updateStats();
+    }
+
+    function selectGroup(element) {
+        const cores = element.parentElement.querySelectorAll('.core');
+        cores.forEach(c => {
+            const cpu = c.dataset.cpu;
+            if(!coreData[cpu]) coreData[cpu] = new Set();
+            coreData[cpu].add(activeTool.id);
+            updateCoreVisual(cpu);
+        });
+        updateStats();
+    }
+
+    function updateCoreVisual(cpu) {
+        const el = document.getElementById(`core-${cpu}`);
+        if (!el) return;
+        const tags = coreData[cpu];
+        const ind = el.querySelector('.indicators');
+        ind.innerHTML = ''; 
+        
+        if (tags.size === 0) {
+            el.classList.add('is-isolated');
+            el.style.border = '1px solid #444';
+        } else {
+            el.classList.remove('is-isolated');
+            if(tags.size === 1) {
+                const r = ROLES.find(x=>x.id === [...tags][0]);
+                el.style.borderColor = r.color;
+            } else {
+                el.style.borderColor = '#fff';
+            }
+            tags.forEach(roleId => {
+                const role = ROLES.find(r => r.id === roleId);
+                if (role) {
+                    const bar = document.createElement('div');
+                    bar.className = 'ind-bar';
+                    bar.style.backgroundColor = role.color;
+                    ind.appendChild(bar);
+                }
+            });
+        }
+    }
+
+    function render() {
+        const txt = document.getElementById('inputData').value;
+        coreData = {}; 
+        const data = parse(txt);
+        const cvs = document.getElementById('canvas');
+        cvs.innerHTML = '';
+
+        if(Object.keys(data).length === 0) {
+            cvs.innerHTML = '<div style="padding:20px; text-align:center">Нет данных CPU.</div>';
+            return;
+        }
+
+        Object.keys(data).sort((a,b)=>a-b).forEach(s => {
+            const sBox = document.createElement('div');
+            sBox.className = 'hierarchy-box socket-box';
+            sBox.innerHTML = `<div class="box-label socket-label" onclick="selectGroup(this)">SOCKET ${s}</div>`;
+
+            Object.keys(data[s]).sort((a,b)=>a-b).forEach(n => {
+                const nBox = document.createElement('div');
+                nBox.className = 'hierarchy-box numa-box';
+                let numaHeaderHtml = `<div class="box-label numa-label" onclick="selectGroup(this)">NUMA ${n}</div>`;
+                
+                // RENDER NET BADGE
+                if (netMap[n] && netMap[n].length > 0) {
+                    numaHeaderHtml += `<div class="nic-badge" title="Attached Interfaces">[NIC: ${netMap[n].join(', ')}]</div>`;
+                }
+                
+                nBox.innerHTML = numaHeaderHtml;
+
+                Object.keys(data[s][n]).sort((a,b)=>parseInt(a)-parseInt(b)).forEach(c => {
+                    const l3Box = document.createElement('div');
+                    l3Box.className = 'hierarchy-box l3-box';
+                    l3Box.innerHTML = `<div class="box-label l3-label" onclick="selectGroup(this)">L3 #${c}</div>`;
+
+                    data[s][n][c].forEach(cpu => {
+                        const cell = document.createElement('div');
+                        cell.className = 'core is-isolated';
+                        cell.id = `core-${cpu}`;
+                        cell.dataset.cpu = cpu;
+                        cell.innerHTML = `<div class="core-num">${cpu}</div><div class="indicators"></div>`;
+                        
+                        cell.onmousedown = (e) => {
+                            isMouseDown = true;
+                            applyTool(cpu, false); 
+                        };
+                        cell.onmouseenter = (e) => {
+                            if(isMouseDown) applyTool(cpu, true);
+                        };
+
+                        l3Box.appendChild(cell);
+                        updateCoreVisual(cpu);
+                    });
+                    nBox.appendChild(l3Box);
+                });
+                sBox.appendChild(nBox);
+            });
+            cvs.appendChild(sBox);
+        });
+        updateStats();
+    }
+
+    function updateStats() {
+        let txt = '';
+        const isolatedCores = [];
+        const roleCores = {}; 
+        const robotPools = {}; 
+
+        for (const [cpu, tags] of Object.entries(coreData)) {
+            const cpuInt = parseInt(cpu);
+            if (tags.size === 0) {
+                isolatedCores.push(cpuInt);
+            } else {
+                tags.forEach(t => {
+                    if (t === 'robot') {
+                        const node = coreNumaMap[cpu] || 'U';
+                        if (!robotPools[node]) robotPools[node] = [];
+                        robotPools[node].push(cpuInt);
+                    } else {
+                        if(!roleCores[t]) roleCores[t] = [];
+                        roleCores[t].push(cpuInt);
+                    }
+                });
+            }
+        }
+
+        const sortedNodes = Object.keys(robotPools).sort((a,b)=>a-b);
+        if (sortedNodes.length > 0) {
+            sortedNodes.forEach(node => {
+                const cores = robotPools[node].sort((a,b)=>a-b);
+                txt += `Robot_Pool_Node${node}:\n  [${cores.join(', ')}]\n\n`;
+            });
+        }
+
+        ROLES.forEach(role => {
+            if (role.id === 'robot') return;
+            if (roleCores[role.id] && roleCores[role.id].length > 0) {
+                roleCores[role.id].sort((a,b)=>a-b);
+                txt += `${role.name}:\n  [${roleCores[role.id].join(', ')}]\n\n`;
+            }
+        });
+
+        if (isolatedCores.length > 0) {
+            isolatedCores.sort((a,b)=>a-b);
+            txt += `Isolated (Default):\n  [${isolatedCores.join(', ')}]\n`;
+        }
+
+        document.getElementById('output').innerText = txt;
+    }
+    
+    function copyConfig() {
+        const txt = document.getElementById('output').innerText;
+        navigator.clipboard.writeText(txt).then(() => {
+            const btn = document.querySelector('.btn-copy');
+            const original = btn.innerText;
+            btn.innerText = "Скопировано!";
+            setTimeout(() => btn.innerText = original, 1000);
+        });
+    }
+</script>
+</body>
+</html>
