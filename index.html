@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>HFT Mapper v13 (Big Scale + Eraser)</title>
+    <title>HFT Mapper v14 (UI Fixes)</title>
     <style>
         :root {
             --bg: #1e1e1e;
@@ -11,18 +11,17 @@
             --text: #ccc;
             
             /* SIZING CONFIG */
-            --core-size: 60px;       /* Было 45px */
-            --core-font: 18px;       /* Было 14px */
-            --l3-width: 280px;       /* Ширина блока L3 под 4 больших ядра */
+            --core-size: 60px;
+            --core-font: 18px;
+            --l3-width: 280px;
             
-            /* Hierarchy Colors */
+            /* Colors */
             --socket-border: #ce9178; 
             --numa-border: #c586c0; 
             --net-numa-border: #00bcf2; 
             --l3-border: #4ec9b0;
             --l3-bg: #2d2d30;
             
-            /* Net Badge */
             --net-badge-bg: #0078d4;
             --net-badge-text: #fff;
         }
@@ -36,16 +35,16 @@
             height: 100vh;
             display: flex;
             overflow: hidden;
-            user-select: none; /* Важно для драга */
+            user-select: none;
         }
         
-        /* --- Sidebar --- */
+        /* --- Sidebar Layout (Flex Fix) --- */
         .sidebar {
             width: 380px; 
             background: var(--panel);
             border-right: 1px solid var(--border);
             display: flex;
-            flex-direction: column;
+            flex-direction: column; /* Вертикальный стек */
             padding: 20px;
             gap: 15px;
             box-shadow: 2px 0 10px rgba(0,0,0,0.3);
@@ -54,16 +53,25 @@
             box-sizing: border-box;
         }
 
-        .section-header, .section-tools { flex-shrink: 0; }
-        .section-config {
-            display: flex; flex-direction: column; flex-grow: 1; min-height: 0; margin-bottom: 0;
+        /* Fixed Height Sections */
+        .section-fixed {
+            flex-shrink: 0; /* Не сжиматься */
+        }
+
+        /* Flexible Section (Config) */
+        .section-flex {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;    /* Занимать всё оставшееся место */
+            min-height: 0;   /* Магия для работы скролла внутри флекса */
+            margin-bottom: 0;
         }
 
         h3 { margin: 0 0 8px 0; color: #fff; font-size: 16px; text-transform: uppercase; letter-spacing: 1px; }
         
         .hint { 
-            font-size: 13px; color: #bbb; margin-bottom: 10px; line-height: 1.5; 
-            background: #2b2b2b; padding: 10px; border-radius: 4px; border: 1px solid #444;
+            font-size: 12px; color: #bbb; margin-bottom: 8px; line-height: 1.4; 
+            background: #2b2b2b; padding: 8px; border-radius: 4px; border: 1px solid #444;
         }
         .cmd-block {
             background: #000; color: #ce9178; padding: 2px 6px; border-radius: 3px; font-family: monospace; display: block; margin-top: 4px;
@@ -71,7 +79,8 @@
 
         textarea#inputData {
             background: #111; color: #9cdcfe; border: 1px solid var(--border);
-            padding: 10px; height: 180px; font-family: monospace; font-size: 11px;
+            padding: 10px; height: 140px; /* Чуть уменьшил высоту для компактности */
+            font-family: monospace; font-size: 11px;
             white-space: pre; resize: none; width: 100%; box-sizing: border-box;
         }
         
@@ -81,13 +90,13 @@
         }
         button.btn-action:hover { background: #0062a3; }
         
-        button.btn-copy { background: #333; border: 1px solid #555; color: #ccc; margin-bottom: 5px; }
+        button.btn-copy { background: #333; border: 1px solid #555; color: #ccc; margin-bottom: 5px; margin-top: auto; }
         button.btn-copy:hover { background: #444; }
 
         /* --- Palette --- */
         .palette-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         .palette-item {
-            display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+            display: flex; align-items: center; gap: 10px; padding: 6px 10px;
             cursor: pointer; font-size: 12px; background: #333; border-radius: 4px;
             border: 1px solid transparent; transition: all 0.1s;
         }
@@ -95,11 +104,14 @@
         .palette-item.active { background: #444; border-color: #fff; }
         .swatch { width: 12px; height: 12px; border-radius: 50%; }
 
-        /* --- Output --- */
+        /* --- Output (Scrollable) --- */
         .output-box {
             font-family: monospace; font-size: 12px; color: #aaa; white-space: pre-wrap;
             background: #111; padding: 10px; border: 1px solid var(--border);
-            flex-grow: 1; overflow-y: auto;
+            
+            /* Scroll Logic */
+            flex-grow: 1;      /* Растягиваться на всю высоту родителя */
+            overflow-y: auto;  /* Скроллить, если контент не влезает */
         }
         .output-box::-webkit-scrollbar { width: 8px; }
         .output-box::-webkit-scrollbar-track { background: #1e1e1e; }
@@ -107,7 +119,7 @@
 
         /* --- Canvas --- */
         .main-view {
-            flex-grow: 1; overflow-y: auto; padding: 60px; /* Больше отступы */
+            flex-grow: 1; overflow-y: auto; padding: 60px;
             background-color: #181818;
             background-image: radial-gradient(#2a2a2a 1px, transparent 1px);
             background-size: 20px 20px;
@@ -124,15 +136,13 @@
         }
         .box-label:hover { transform: scale(1.1); color: #fff !important; text-shadow: 0 0 5px white;}
 
-        /* Socket Box */
         .socket-box { border: 2px solid var(--socket-border); padding: 30px 20px 20px 20px; margin-bottom: 50px; }
         .socket-label { background: var(--bg); color: var(--socket-border); border: 1px solid var(--socket-border); font-size: 14px; }
 
-        /* NUMA Box */
         .numa-box { 
             border: 2px solid var(--numa-border); 
             padding: 30px 20px 20px 20px; 
-            display: flex; flex-wrap: wrap; gap: 30px; /* Больше зазор между L3 */
+            display: flex; flex-wrap: wrap; gap: 30px;
             background: rgba(197, 134, 192, 0.03); 
             transition: all 0.3s;
         }
@@ -168,7 +178,6 @@
         }
         @keyframes pulse { 0% { opacity: 0.8; } 50% { opacity: 1; text-shadow: 0 0 5px white; } 100% { opacity: 0.8; } }
 
-        /* L3 Box */
         .l3-box {
             border: 1px dashed var(--l3-border); background: var(--l3-bg);
             padding: 35px 12px 12px 12px; display: flex; flex-wrap: wrap; gap: 8px;
@@ -180,7 +189,6 @@
             background: var(--bg); color: var(--l3-border); border: 1px solid var(--l3-border); white-space: nowrap;
         }
 
-        /* Cores - SCALED UP */
         .core {
             width: var(--core-size); height: var(--core-size);
             background: #252526; border: 1px solid #555;
@@ -202,30 +210,31 @@
 <body>
 
 <div class="sidebar">
-    <div class="section-header">
+    <div class="section-fixed">
         <h3>1. Данные</h3>
         <div class="hint">
-            Подключись к серверу <b>duty.virt.qb.loc</b> и выполни:
+            Подключись к <b>duty.virt.qb.loc</b>:
             <span class="cmd-block">cpu-map $BS</span>
-            Скопируй весь вывод и вставь ниже.
         </div>
         <textarea id="inputData" placeholder="=== Подключение к ... ===&#10;>>> 1. LSCPU -E&#10;..."></textarea>
         <button class="btn-action" onclick="render()">Построить карту</button>
     </div>
 
-    <div class="section-tools">
+    <hr style="border: 0; border-top: 1px solid #333; width: 100%; margin: 10px 0;">
+
+    <div class="section-fixed">
         <h3>2. Инструменты</h3>
         <div class="hint">
             <b>LKM + Drag:</b> Рисовать<br>
-            <b>Ctrl + Drag:</b> Стереть (очистить ядро)
+            <b>Ctrl + Drag:</b> Стереть
         </div>
         <div id="palette" class="palette-grid"></div>
     </div>
 
-    <div class="section-config">
-        <div style="margin-top:10px; margin-bottom:5px;">
-            <h3>3. Конфиг</h3>
-        </div>
+    <hr style="border: 0; border-top: 1px solid #333; width: 100%; margin: 10px 0;">
+
+    <div class="section-flex">
+        <h3>3. Конфиг</h3>
         <button class="btn-action btn-copy" onclick="copyConfig()">Скопировать конфиг</button>
         <div class="output-box" id="output"></div>
     </div>
@@ -324,6 +333,7 @@
             }
 
             if (mode === 'network') {
+                // Если парсер встретит число >= 0, добавит в сет
                 const match = line.match(/^(-?\d+)$/);
                 if (match) {
                     const val = parseInt(match[1]);
@@ -334,15 +344,12 @@
         return tree;
     }
 
-    // UPDATED APPLY TOOL: Supports Eraser
     function applyTool(cpu, forceAdd = true, isEraser = false) {
         if (!coreData[cpu]) coreData[cpu] = new Set();
         
         if (isEraser) {
-            // Wipe everything on this core
             coreData[cpu].clear();
         } else {
-            // Normal Paint Logic
             if (coreData[cpu].has(activeTool.id) && !forceAdd) {
                 coreData[cpu].delete(activeTool.id);
             } else {
@@ -432,14 +439,11 @@
                         cell.className = 'core is-isolated';
                         cell.id = `core-${cpu}`;
                         cell.dataset.cpu = cpu;
-                        // IMPORTANT: draggable="false" prevents ghost drag issues
                         cell.setAttribute('draggable', 'false'); 
                         cell.innerHTML = `<div class="core-num">${cpu}</div><div class="indicators"></div>`;
                         
-                        // EVENT HANDLERS
                         cell.onmousedown = (e) => {
                             isMouseDown = true;
-                            // Check for Ctrl (Windows/Linux) or Meta (Mac Command)
                             const isEraser = e.ctrlKey || e.metaKey;
                             applyTool(cpu, false, isEraser); 
                         };
@@ -449,7 +453,6 @@
                                 applyTool(cpu, true, isEraser);
                             }
                         };
-                        // Block native drag to allow JS drag painting
                         cell.ondragstart = () => false;
 
                         l3Box.appendChild(cell);
