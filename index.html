@@ -970,82 +970,236 @@
 
     // Validate configuration
     function validateConfig() {
-        const errors = [];
-        const warnings = [];
+    const errors = [];
+    const warnings = [];
+    const info = [];
 
-        const physInstance = instances['Physical'];
-        if (!physInstance) {
-            document.getElementById('validation-output').innerHTML = '<div style="color: #aaa;">Нет данных для валидации</div>';
-            return;
-        }
+    // === ПРАВИЛА СОВМЕСТИМОСТИ ===
+    // Сервисы, которые ТРЕБУЮТ отдельное выделенное ядро
+    const DEDICATED_CORE_REQUIRED = ['gateway', 'robot', 'net_irq'];
+    
+    // Сервисы, которые ДОЛЖНЫ быть на сетевой NUMA ноде
+    const NETWORK_NUMA_REQUIRED = ['gateway', 'net_irq', 'ar', 'rf', 'trash', 'click', 'formula'];
+    
+    // Матрица ЗАПРЕЩЁННЫХ соседств (если на одном ядре)
+    const FORBIDDEN_PAIRS = [
+        ['ar', 'trash'],           // AR нельзя на Trash ядро
+        ['formula', 'trash'],      // Formula нельзя на Trash ядро
+        ['gateway', 'robot'],      // Gateway требует отдельное ядро
+        ['gateway', 'ar'],
+        ['gateway', 'rf'],
+        ['gateway', 'trash'],
+        ['gateway', 'click'],
+        ['gateway', 'udp'],
+        ['gateway', 'formula'],
+        ['gateway', 'net_irq'],
+        ['gateway', 'sys_os'],
+        ['robot', 'ar'],           // Robot требует отдельное ядро
+        ['robot', 'rf'],
+        ['robot', 'trash'],
+        ['robot', 'click'],
+        ['robot', 'udp'],
+        ['robot', 'formula'],
+        ['robot', 'net_irq'],
+        ['robot', 'sys_os'],
+        ['net_irq', 'ar'],         // IRQ требует отдельное ядро
+        ['net_irq', 'rf'],
+        ['net_irq', 'trash'],
+        ['net_irq', 'click'],
+        ['net_irq', 'udp'],
+        ['net_irq', 'formula'],
+        ['net_irq', 'sys_os'],
+    ];
+    
+    // Матрица РАЗРЕШЁННЫХ соседств
+    const ALLOWED_PAIRS = [
+        ['ar', 'rf'],              // AR + RF могут делить ядро
+        ['ar', 'formula'],         // AR + Formula могут соседствовать
+        ['rf', 'formula'],         // RF + Formula могут соседствовать
+        ['rf', 'trash'],           // RF + Trash допустимо
+        ['rf', 'click'],           // RF + ClickHouse допустимо
+        ['trash', 'click'],        // Trash + ClickHouse допустимо
+        ['trash', 'udp'],          // Trash + UDP допустимо (при низком трафике)
+    ];
 
-        // Get network NUMA nodes
-        const netNodes = Array.from(netNumaNodes);
+    // Целевая нагрузка
+    const TARGET_LOAD_CRITICAL = 20;  // Gateway, Robot - целевая ~20%
+    const TARGET_LOAD_WARNING = 50;
+    const TARGET_LOAD_CRITICAL_THRESHOLD = 80;
 
-        // Check all instances
-        Object.keys(instances).forEach(instName => {
-            const inst = instances[instName];
+    const physInstance = instances['Physical'];
+    if (!physInstance && Object.keys(instances).length === 0) {
+        document.getElementById('validation-output').innerHTML = '<div style="color: #aaa;">Нет данных для валидации</div>';
+        return;
+    }
+
+    const netNodes = Array.from(netNumaNodes).map(n => n.toString());
+
+    // Helper:  проверить пару на запрет
+    function isForbiddenPair(role1, role2) {
+        return FORBIDDEN_PAIRS.some(([a, b]) => 
+            (a === role1 && b === role2) || (a === role2 && b === role1)
+        );
+    }
+
+    // Helper: получить название роли
+    function getRoleName(roleId) {
+        const role = ROLES.find(r => r.id === roleId);
+        return role ? role.name : roleId;
+    }
+
+    // === ПРОВЕРКА ВСЕХ ИНСТАНСОВ ===
+    Object.keys(instances).forEach(instName => {
+        const inst = instances[instName];
+        
+        Object.keys(inst).forEach(cpu => {
+            const tags = inst[cpu];
+            if (! tags || tags.size === 0) return;
             
-            Object.keys(inst).forEach(cpu => {
-                const tags = inst[cpu];
-                const load = parseFloat(cpuLoadMap[cpu] || 0);
-                const numaNode = coreNumaMap[cpu];
+            const tagsArray = Array.from(tags);
+            const load = parseFloat(cpuLoadMap[cpu] || 0);
+            const numaNode = coreNumaMap[cpu]?.toString();
 
-                // Error: Gateway not on network NUMA node
-                if (tags.has('gateway') && netNodes.length > 0 && numaNode !== undefined) {
-                    // Ensure type consistency for comparison
-                    const numaNodeStr = numaNode.toString();
-                    const netNodesStr = netNodes.map(n => n.toString());
-                    if (!netNodesStr.includes(numaNodeStr)) {
-                        errors.push(`[${instName}] Gateway на ядре ${cpu} (NUMA ${numaNode}) не находится на сетевой NUMA ноде (${netNodes.join(', ')})`);
-                    }
-                }
-
-                // Error: AR and Trash on same core
-                if (tags.has('ar') && tags.has('trash')) {
-                    errors.push(`[${instName}] AR и Trash на одном ядре ${cpu} (запрещено по документации)`);
-                }
-
-                // Error: Formula and Trash on same core
-                if (tags.has('formula') && tags.has('trash')) {
-                    errors.push(`[${instName}] Formula и Trash на одном ядре ${cpu} (запрещено по документации)`);
-                }
-
-                // Warning: Load > 50% on gateway or robot cores
-                if ((tags.has('gateway') || tags.has('robot')) && load > 50) {
-                    warnings.push(`[${instName}] Нагрузка ${load}% на ядре ${cpu} с ${tags.has('gateway') ? 'Gateway' : 'Robot'} (> 50%)`);
-                }
-
-                // Warning: Load > 80% on any assigned core
-                if (tags.size > 0 && load > 80) {
-                    warnings.push(`[${instName}] Нагрузка ${load}% на назначенном ядре ${cpu} (> 80%)`);
+            // === 1. ПРОВЕРКА:  Сервисы требующие отдельное ядро ===
+            DEDICATED_CORE_REQUIRED. forEach(dedicatedRole => {
+                if (tags.has(dedicatedRole) && tags.size > 1) {
+                    const otherRoles = tagsArray.filter(t => t !== dedicatedRole).map(getRoleName).join(', ');
+                    errors.push(`[${instName}] CPU ${cpu}:  ${getRoleName(dedicatedRole)} требует ОТДЕЛЬНОЕ ядро, но делит с:  ${otherRoles}`);
                 }
             });
+
+            // === 2. ПРОВЕРКА: Запрещённые соседства ===
+            if (tags.size > 1) {
+                for (let i = 0; i < tagsArray.length; i++) {
+                    for (let j = i + 1; j < tagsArray.length; j++) {
+                        if (isForbiddenPair(tagsArray[i], tagsArray[j])) {
+                            errors.push(`[${instName}] CPU ${cpu}:  ЗАПРЕЩЕНО совмещать ${getRoleName(tagsArray[i])} + ${getRoleName(tagsArray[j])}`);
+                        }
+                    }
+                }
+            }
+
+            // === 3. ПРОВЕРКА: Локация на сетевой NUMA ===
+            if (netNodes.length > 0 && numaNode !== undefined) {
+                NETWORK_NUMA_REQUIRED. forEach(role => {
+                    if (tags.has(role) && !netNodes.includes(numaNode)) {
+                        if (role === 'gateway') {
+                            errors.push(`[${instName}] CPU ${cpu}: Gateway ДОЛЖЕН быть на сетевой NUMA (сейчас:  ${numaNode}, сетевая:  ${netNodes.join(',')})`);
+                        } else if (role === 'net_irq') {
+                            errors.push(`[${instName}] CPU ${cpu}: IRQ ДОЛЖЕН быть на сетевой NUMA`);
+                        } else {
+                            warnings.push(`[${instName}] CPU ${cpu}: ${getRoleName(role)} рекомендуется на сетевой NUMA (сейчас: ${numaNode})`);
+                        }
+                    }
+                });
+            }
+
+            // === 4. ПРОВЕРКА: Нагрузка на критичные сервисы ===
+            if (tags.has('gateway') || tags.has('robot')) {
+                const serviceName = tags.has('gateway') ? 'Gateway' : 'Robot';
+                if (load > TARGET_LOAD_CRITICAL_THRESHOLD) {
+                    errors.push(`[${instName}] CPU ${cpu}:  ${serviceName} ПЕРЕГРУЖЕН (${load}% > 80%). Целевая:  ~20%`);
+                } else if (load > TARGET_LOAD_WARNING) {
+                    warnings.push(`[${instName}] CPU ${cpu}: ${serviceName} высокая нагрузка (${load}%). Целевая: ~20%`);
+                }
+            }
+
+            // === 5. ПРОВЕРКА: Нагрузка на любое ядро ===
+            if (load > TARGET_LOAD_CRITICAL_THRESHOLD && tags.size > 0) {
+                if (! tags.has('gateway') && !tags.has('robot')) {
+                    warnings.push(`[${instName}] CPU ${cpu}: Высокая нагрузка ${load}%`);
+                }
+            }
+        });
+    });
+
+    // === 6. ПРОВЕРКА: System (OS) cores ===
+    if (physInstance) {
+        let osCoreCount = 0;
+        let osTotalLoad = 0;
+        
+        Object.keys(physInstance).forEach(cpu => {
+            if (physInstance[cpu].has('sys_os')) {
+                osCoreCount++;
+                osTotalLoad += parseFloat(cpuLoadMap[cpu] || 0);
+            }
         });
 
-        // Display results
-        let html = '';
-        
-        if (errors.length === 0 && warnings.length === 0) {
-            html = '<div style="color: #4caf50; font-weight: bold;">✓ Конфигурация валидна</div>';
+        if (osCoreCount === 0) {
+            warnings.push(`[Physical] Не выделены ядра под System (OS)`);
         } else {
-            if (errors.length > 0) {
-                html += '<div style="color: #f44336; font-weight: bold; margin-bottom: 8px;">Ошибки:</div>';
-                errors.forEach(err => {
-                    html += `<div style="color: #f44336; margin-left: 10px; margin-bottom: 4px;">✗ ${err}</div>`;
-                });
+            const avgOsLoad = osTotalLoad / osCoreCount;
+            if (avgOsLoad > 50) {
+                warnings.push(`[Physical] Высокая средняя нагрузка на OS ядра:  ${avgOsLoad. toFixed(0)}%. Рекомендуется добавить ядра. `);
             }
-            
-            if (warnings.length > 0) {
-                html += '<div style="color: #ffeb3b; font-weight: bold; margin-top: 10px; margin-bottom: 8px;">Предупреждения:</div>';
-                warnings.forEach(warn => {
-                    html += `<div style="color: #ffeb3b; margin-left: 10px; margin-bottom: 4px;">⚠ ${warn}</div>`;
-                });
-            }
+            info.push(`[Physical] OS ядер: ${osCoreCount}, средняя нагрузка:  ${avgOsLoad.toFixed(0)}%`);
         }
-
-        document.getElementById('validation-output').innerHTML = html;
     }
+
+    // === 7. ПРОВЕРКА:  Роботы на разных NUMA в одном пуле ===
+    Object.keys(instances).forEach(instName => {
+        if (instName === 'Physical') return;
+        
+        const inst = instances[instName];
+        const robotNumas = new Set();
+        
+        Object. keys(inst).forEach(cpu => {
+            if (inst[cpu].has('robot')) {
+                const numa = coreNumaMap[cpu];
+                if (numa !== undefined) robotNumas.add(numa. toString());
+            }
+        });
+
+        // Если роботы на нескольких NUMA нодах - предупреждение о тирах
+        if (robotNumas.size > 1) {
+            info.push(`[${instName}] Роботы распределены по ${robotNumas.size} NUMA нодам: ${Array.from(robotNumas).join(', ')}. Убедитесь, что пулы разделены по нодам.`);
+        }
+    });
+
+    // === 8. ПРОВЕРКА: IRQ ядра ===
+    if (physInstance) {
+        let irqCount = 0;
+        Object.keys(physInstance).forEach(cpu => {
+            if (physInstance[cpu].has('net_irq')) irqCount++;
+        });
+        
+        if (irqCount === 0 && netNodes.length > 0) {
+            warnings.push(`[Physical] Не выделены ядра под IRQ (сетевые прерывания)`);
+        } else if (irqCount > 0) {
+            info.push(`[Physical] IRQ ядер: ${irqCount}`);
+        }
+    }
+
+    // === ВЫВОД РЕЗУЛЬТАТОВ ===
+    let html = '';
+    
+    if (errors.length === 0 && warnings.length === 0) {
+        html = '<div style="color: #4caf50; font-weight: bold;">✓ Конфигурация валидна</div>';
+    }
+    
+    if (errors.length > 0) {
+        html += '<div style="color: #f44336; font-weight: bold; margin-bottom: 8px;">❌ ОШИБКИ:</div>';
+        errors.forEach(e => {
+            html += `<div style="color: #f44336; margin-left: 10px; margin-bottom: 4px;">• ${e}</div>`;
+        });
+    }
+    
+    if (warnings.length > 0) {
+        html += '<div style="color: #ff9800; font-weight: bold; margin-top: 8px; margin-bottom: 8px;">⚠ ПРЕДУПРЕЖДЕНИЯ:</div>';
+        warnings.forEach(w => {
+            html += `<div style="color: #ff9800; margin-left: 10px; margin-bottom: 4px;">• ${w}</div>`;
+        });
+    }
+    
+    if (info.length > 0) {
+        html += '<div style="color: #2196f3; font-weight: bold; margin-top: 8px; margin-bottom: 8px;">ℹ ИНФОРМАЦИЯ:</div>';
+        info.forEach(i => {
+            html += `<div style="color: #2196f3; margin-left: 10px; margin-bottom: 4px;">• ${i}</div>`;
+        });
+    }
+
+    document. getElementById('validation-output').innerHTML = html;
+}
 
     // Drag and drop support for JSON import
     document.body.addEventListener('dragover', (e) => {
