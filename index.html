@@ -387,14 +387,18 @@
 
             // --- 1. LSCPU ---
             if (mode === 'lscpu') {
-                if (line.startsWith('CPU')) continue;
-                const parts = line.split(/\s+/);
+                if (line.startsWith('CPU') || line.startsWith('#')) continue;
+                
+                // Parse CSV format: CPU,NODE,SOCKET,CORE,CACHE,ONLINE
+                const parts = line.split(',');
                 if (parts.length < 6) continue;
-                const cpu = parts[0];
-                const node = parts[1];
-                const socket = parts[2];
-                const cacheStr = parts[4];
-                const online = parts[5];
+                
+                const cpu = parts[0].trim();
+                const node = parts[1].trim();
+                const socket = parts[2].trim();
+                const cacheStr = parts[4].trim();
+                const online = parts[5].trim();
+                
                 if (online === 'no' || node === '-' || socket === '-') continue;
 
                 coreNumaMap[cpu] = node;
@@ -437,6 +441,41 @@
                 }
             }
 
+            // --- 4. NETWORK ---
+            if (mode === 'network') {
+                // Parse new network format with NUMA Node
+                if (line.startsWith('NUMA Node:')) {
+                    const numaMatch = line.match(/NUMA Node:\s*(\d+)/);
+                    if (numaMatch) {
+                        const node = numaMatch[1];
+                        netNumaNodes.add(node);
+                    }
+                }
+                
+                // Also handle old format for compatibility
+                if (line.startsWith('net') && line.includes(':')) {
+                    const parts = line.split(':');
+                    if (parts.length >= 2) {
+                        const rangeStr = parts[1].trim();
+                        const cores = parseRangeStr(rangeStr);
+                        if (cores.length > 8) {
+                            const nodeCounts = {};
+                            cores.forEach(c => {
+                                const n = coreNumaMap[c];
+                                if (n !== undefined) nodeCounts[n] = (nodeCounts[n]||0) + 1;
+                            });
+                            let maxNode = -1; let maxCount = 0;
+                            for(const [n, count] of Object.entries(nodeCounts)) {
+                                if(count > maxCount) { maxCount = count; maxNode = n; }
+                            }
+                            if (maxNode !== -1) netNumaNodes.add(maxNode);
+                        } else {
+                            if(!ignoreNetSection) cores.forEach(c => addTag('Physical', c.toString(), 'net_irq'));
+                        }
+                    }
+                }
+            }
+
             // --- 5. RUNTIME ---
             if (mode === 'runtime') {
                 const instanceMatch = line.match(/^(\w+):$/);
@@ -476,28 +515,6 @@
 
                 if (line.includes('topology information')) ignoreNetSection = true;
                 if (line.includes('Network interfaces cpus')) ignoreNetSection = false;
-                
-                if (line.startsWith('net') && line.includes(':')) {
-                     const parts = line.split(':');
-                     if (parts.length >= 2) {
-                        const rangeStr = parts[1].trim();
-                        const cores = parseRangeStr(rangeStr);
-                        if (cores.length > 8) {
-                            const nodeCounts = {};
-                            cores.forEach(c => {
-                                const n = coreNumaMap[c];
-                                if (n !== undefined) nodeCounts[n] = (nodeCounts[n]||0) + 1;
-                            });
-                            let maxNode = -1; let maxCount = 0;
-                            for(const [n, count] of Object.entries(nodeCounts)) {
-                                if(count > maxCount) { maxCount = count; maxNode = n; }
-                            }
-                            if (maxNode !== -1) netNumaNodes.add(maxNode);
-                        } else {
-                            if(!ignoreNetSection) cores.forEach(c => addTag('Physical', c.toString(), 'net_irq'));
-                        }
-                     }
-                }
             }
 
             // --- 7. CPU LOAD (MPSTAT) ---
@@ -513,7 +530,6 @@
                     const cpuId = match[1];
                     const idle = parseFloat(match[11]); 
                     cpuLoadMap[cpuId] = (100 - idle).toFixed(1);
-                }
                 }
             }
         }
