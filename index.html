@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>HFT Mapper v0.1.7 (Smart Config Parsing)</title>
+    <title>HFT Mapper v0.1.9 (Render Fix)</title>
     <style>
         :root {
             --bg: #1e1e1e;
@@ -13,7 +13,7 @@
             /* SIZING CONFIG */
             --core-size: 60px;
             --core-font: 18px;
-            --l3-width: 280px;
+            --l3-width: 310px;
             
             /* Colors */
             --socket-border: #ce9178; 
@@ -281,7 +281,6 @@
         pContainer.appendChild(el);
     });
 
-    // --- Helper: Parse Range String "0-1,30-31" to Array [0,1,30,31] ---
     function parseRangeStr(str) {
         const res = new Set();
         const parts = str.split(',');
@@ -298,14 +297,20 @@
         return Array.from(res);
     }
 
+    function addTag(cpu, tag) {
+        if (!cpu) return;
+        if (!coreData[cpu]) coreData[cpu] = new Set();
+        coreData[cpu].add(tag);
+    }
+
     function parse(text) {
         const tree = {}; 
         coreNumaMap = {};
         netNumaNodes = new Set();
         serverName = '';
         
-        // Reset logic for runtime config
         let runtimeConfigFound = false;
+        let ignoreNetSection = false; // NEW: Flag to ignore topology section
 
         const lines = text.split('\n');
         let mode = 'none'; 
@@ -326,7 +331,7 @@
             if (line.includes('>>> 3. RUNTIME CONFIG')) { 
                 mode = 'runtime'; 
                 if (!runtimeConfigFound) {
-                    coreData = {}; // Full reset: we will trust runtime config completely
+                    coreData = {}; 
                     runtimeConfigFound = true;
                 }
                 continue; 
@@ -355,27 +360,52 @@
                 if(!tree[socket][node][l3id]) tree[socket][node][l3id] = [];
                 tree[socket][node][l3id].push(cpu);
                 
-                // Fallback coloring ONLY if runtime config is missing
                 if(!runtimeConfigFound) {
                     if(!coreData[cpu]) coreData[cpu] = new Set();
                     if (parseInt(cpu) === 0) coreData[cpu].add('sys_os');
                 }
             }
 
-            // --- 2. NETWORK (NUMA) ---
+            // --- 2. NETWORK ---
             if (mode === 'network') {
                 const match = line.match(/^(-?\d+)$/);
                 if (match) {
                     const val = parseInt(match[1]);
-                    // Ignore -1 here. We will deduce it later if needed.
                     if (val >= 0) netNumaNodes.add(val.toString());
                 }
             }
 
-            // --- 3. RUNTIME (Overview & Instance) ---
+            // --- 3. RUNTIME CONFIG ---
             if (mode === 'runtime') {
-                // Parse "Instance overview" dictionary lines: 'Key': [list]
-                // Regex: 'KeyName': [1, 2, 3]
+                
+                // --- IGNORE TOPOLOGY SECTION ---
+                // If we see "topology", we stop parsing "net" lines until we see "Network interfaces"
+                if (line.includes('topology information')) {
+                    ignoreNetSection = true;
+                }
+                if (line.includes('Network interfaces cpus')) {
+                    ignoreNetSection = false;
+                }
+
+                // Strategy A: Per-CPU lines
+                if (line.includes("'cpu_id':")) {
+                    const idMatch = line.match(/'cpu_id':\s*(\d+)/);
+                    if (idMatch) {
+                        const cpu = idMatch[1];
+                        if (!line.includes("'isolated': True")) addTag(cpu, 'sys_os');
+                        if (line.includes("AllRobots")) addTag(cpu, 'ar');
+                        else if (line.includes("Robot")) addTag(cpu, 'robot'); 
+                        if (line.includes("Gateway")) addTag(cpu, 'gateway');
+                        if (line.includes("Trash")) addTag(cpu, 'trash');
+                        if (line.includes("Formula")) addTag(cpu, 'formula');
+                        if (line.includes("RemoteFormula")) addTag(cpu, 'rf');
+                        if (line.includes("ClickHouse")) addTag(cpu, 'click');
+                        if (line.includes("Udp")) addTag(cpu, 'udp');
+                        if (line.includes("net_cpu")) addTag(cpu, 'net_irq');
+                    }
+                }
+
+                // Strategy B: Aggregated Lists
                 const dictMatch = line.match(/'(\w+)':\s*\[([\d,\s]+)\]/);
                 if (dictMatch) {
                     const key = dictMatch[1];
@@ -392,55 +422,32 @@
                     if (key === 'TrashCPU') roleId = 'trash';
                     if (key === 'UdpReceiveCores' || key === 'UdpSendCores') roleId = 'udp';
 
-                    if (roleId) {
-                        cores.forEach(c => {
-                            if (!coreData[c]) coreData[c] = new Set();
-                            coreData[c].add(roleId);
-                        });
-                    }
+                    if (roleId) cores.forEach(c => addTag(c, roleId));
                 }
 
-                // Parse "Overview" section
-                // 1. System cpus: 0-1,30-31
+                // Strategy C: Overview Sections
                 if (line.startsWith('System cpus:')) {
                     const rangeStr = line.replace('System cpus:', '').trim();
-                    const sysCores = parseRangeStr(rangeStr);
-                    sysCores.forEach(c => {
-                        const cs = c.toString();
-                        if (!coreData[cs]) coreData[cs] = new Set();
-                        coreData[cs].add('sys_os');
-                    });
+                    parseRangeStr(rangeStr).forEach(c => addTag(c.toString(), 'sys_os'));
                 }
-
-                // 2. Network interfaces cpus (IRQ)
-                // Looks for "net0: 2,4"
-                if (line.startsWith('net')) {
+                
+                // Only parse IRQ lines if NOT in topology section
+                if (line.startsWith('net') && line.includes(':') && !ignoreNetSection) {
                     const parts = line.split(':');
                     if (parts.length >= 2) {
-                        const rangeStr = parts[1].trim();
-                        const irqCores = parseRangeStr(rangeStr);
-                        irqCores.forEach(c => {
-                             const cs = c.toString();
-                             if (!coreData[cs]) coreData[cs] = new Set();
-                             coreData[cs].add('net_irq');
-                        });
+                        parseRangeStr(parts[1].trim()).forEach(c => addTag(c.toString(), 'net_irq'));
                     }
                 }
             }
         }
         
-        // --- SMART INFERENCE: If Network Numa is -1 (empty set), guess from IRQ cores ---
         if (netNumaNodes.size === 0) {
-            // Find all cores marked as 'net_irq'
-            const irqNodes = new Set();
             for (const [cpu, tags] of Object.entries(coreData)) {
                 if (tags.has('net_irq')) {
                     const node = coreNumaMap[cpu];
-                    if (node !== undefined) irqNodes.add(node);
+                    if (node !== undefined) netNumaNodes.add(node);
                 }
             }
-            // If we found any nodes associated with IRQ cores, highlight them
-            irqNodes.forEach(n => netNumaNodes.add(n));
         }
 
         return tree;
@@ -506,7 +513,6 @@
 
     function render() {
         const txt = document.getElementById('inputData').value;
-        // Do NOT reset coreData here, parse() handles it
         const data = parse(txt);
         const cvs = document.getElementById('canvas');
         cvs.innerHTML = '';
@@ -558,7 +564,6 @@
                         cell.ondragstart = () => false;
 
                         l3Box.appendChild(cell);
-                        updateCoreVisual(cpu);
                     });
                     nBox.appendChild(l3Box);
                 });
@@ -566,6 +571,10 @@
             });
             cvs.appendChild(sBox);
         });
+
+        // FIX: Update visuals AFTER everything is in the DOM
+        Object.keys(coreData).forEach(cpu => updateCoreVisual(cpu));
+        
         updateStats();
     }
 
