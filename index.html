@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>HFT Mapper v0.1.9 (Render Fix)</title>
+    <title>HFT Mapper v0.2 (Tooltips & Contrast)</title>
     <style>
         :root {
             --bg: #1e1e1e;
@@ -244,14 +244,15 @@
 </div>
 
 <script>
+    // --- UPDATED ROLES WITH NEW COLORS ---
     const ROLES = [
-        { id: 'sys_os',   name: 'System (OS)',   color: '#0078d4' },
-        { id: 'net_irq',  name: 'net0 (IRQ)',    color: '#00bcf2' },
-        { id: 'udp',      name: 'UDP',           color: '#00e5ff' },
+        { id: 'sys_os',   name: 'System (OS)',   color: '#607d8b' }, /* Grey-Blue (Neutral) */
+        { id: 'net_irq',  name: 'net0 (IRQ)',    color: '#d500f9' }, /* Vivid Purple */
+        { id: 'udp',      name: 'UDP',           color: '#ff6d00' }, /* Bright Orange */
         { id: 'robot',    name: 'Robot',         color: '#e81123' },
-        { id: 'ar',       name: 'AR',            color: '#d13438' }, /* AllRobotsThCPU */
+        { id: 'ar',       name: 'AR',            color: '#d13438' }, 
         { id: 'gateway',  name: 'Gateway',       color: '#107c10' },
-        { id: 'rf',       name: 'RF (Remote)',   color: '#008080' }, /* RemoteFormula */
+        { id: 'rf',       name: 'RF (Remote)',   color: '#008080' }, 
         { id: 'click',    name: 'Clickhouse',    color: '#ffcc00' },
         { id: 'formula',  name: 'Formula',       color: '#ffffff' },
         { id: 'trash',    name: 'Trash',         color: '#8a6d3b' }
@@ -310,7 +311,7 @@
         serverName = '';
         
         let runtimeConfigFound = false;
-        let ignoreNetSection = false; // NEW: Flag to ignore topology section
+        let ignoreNetSection = false; 
 
         const lines = text.split('\n');
         let mode = 'none'; 
@@ -377,9 +378,6 @@
 
             // --- 3. RUNTIME CONFIG ---
             if (mode === 'runtime') {
-                
-                // --- IGNORE TOPOLOGY SECTION ---
-                // If we see "topology", we stop parsing "net" lines until we see "Network interfaces"
                 if (line.includes('topology information')) {
                     ignoreNetSection = true;
                 }
@@ -431,7 +429,6 @@
                     parseRangeStr(rangeStr).forEach(c => addTag(c.toString(), 'sys_os'));
                 }
                 
-                // Only parse IRQ lines if NOT in topology section
                 if (line.startsWith('net') && line.includes(':') && !ignoreNetSection) {
                     const parts = line.split(':');
                     if (parts.length >= 2) {
@@ -488,6 +485,18 @@
         const ind = el.querySelector('.indicators');
         ind.innerHTML = ''; 
         
+        // --- TOOLTIP GENERATION ---
+        if (tags.size > 0) {
+            const roleNames = [...tags].map(tid => {
+                const r = ROLES.find(x => x.id === tid);
+                return r ? r.name : tid;
+            }).join(', ');
+            el.title = `Core ${cpu}: ${roleNames}`;
+        } else {
+            el.title = `Core ${cpu}: Isolated / Unused`;
+        }
+        // --------------------------
+
         if (tags.size === 0) {
             el.classList.add('is-isolated');
             el.style.border = '1px solid #555';
@@ -572,9 +581,7 @@
             cvs.appendChild(sBox);
         });
 
-        // FIX: Update visuals AFTER everything is in the DOM
         Object.keys(coreData).forEach(cpu => updateCoreVisual(cpu));
-        
         updateStats();
     }
 
