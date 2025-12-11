@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>HFT Mapper v0.2 (Tooltips & Contrast)</title>
+    <title>HFT Mapper v0.2.1 (Visual Tooltips & AR Color)</title>
     <style>
         :root {
             --bg: #1e1e1e;
@@ -203,6 +203,26 @@
         }
         .ind-bar { flex-grow: 1; height: 100%; }
 
+        /* --- CUSTOM TOOLTIP --- */
+        #tooltip {
+            position: fixed;
+            display: none;
+            background: rgba(25, 25, 25, 0.95);
+            border: 1px solid #555;
+            padding: 10px;
+            border-radius: 5px;
+            color: #fff;
+            font-size: 13px;
+            z-index: 1000;
+            pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            white-space: nowrap;
+            backdrop-filter: blur(2px);
+        }
+        .tooltip-header { font-weight: bold; margin-bottom: 5px; color: #fff; border-bottom: 1px solid #444; padding-bottom: 3px;}
+        .tooltip-row { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
+        .tooltip-swatch { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;}
+
     </style>
 </head>
 <body>
@@ -243,14 +263,16 @@
     </div>
 </div>
 
+<div id="tooltip"></div>
+
 <script>
-    // --- UPDATED ROLES WITH NEW COLORS ---
+    // --- UPDATED ROLES WITH NEW AR COLOR ---
     const ROLES = [
-        { id: 'sys_os',   name: 'System (OS)',   color: '#607d8b' }, /* Grey-Blue (Neutral) */
-        { id: 'net_irq',  name: 'net0 (IRQ)',    color: '#d500f9' }, /* Vivid Purple */
-        { id: 'udp',      name: 'UDP',           color: '#ff6d00' }, /* Bright Orange */
+        { id: 'sys_os',   name: 'System (OS)',   color: '#607d8b' }, 
+        { id: 'net_irq',  name: 'net0 (IRQ)',    color: '#d500f9' }, 
+        { id: 'udp',      name: 'UDP',           color: '#ff6d00' }, 
         { id: 'robot',    name: 'Robot',         color: '#e81123' },
-        { id: 'ar',       name: 'AR',            color: '#d13438' }, 
+        { id: 'ar',       name: 'AR',            color: '#c2185b' }, /* NEW: Vivid Magenta for AR */
         { id: 'gateway',  name: 'Gateway',       color: '#107c10' },
         { id: 'rf',       name: 'RF (Remote)',   color: '#008080' }, 
         { id: 'click',    name: 'Clickhouse',    color: '#ffcc00' },
@@ -264,6 +286,7 @@
     let netNumaNodes = new Set();
     let serverName = '';
     let isMouseDown = false; 
+    const tooltipEl = document.getElementById('tooltip');
 
     document.addEventListener('mouseup', () => { isMouseDown = false; });
     
@@ -478,6 +501,34 @@
         updateStats();
     }
 
+    // --- NEW TOOLTIP FUNCTIONS ---
+    function showTooltip(e, cpu) {
+        const tags = coreData[cpu];
+        if (!tags || tags.size === 0) return;
+
+        let html = `<div class="tooltip-header">Core ${cpu} Roles:</div>`;
+        tags.forEach(tid => {
+             const r = ROLES.find(x => x.id === tid);
+             if(r) {
+                html += `<div class="tooltip-row"><div class="tooltip-swatch" style="background:${r.color}"></div>${r.name}</div>`;
+             }
+        });
+        tooltipEl.innerHTML = html;
+        tooltipEl.style.display = 'block';
+        moveTooltip(e);
+    }
+
+    function moveTooltip(e) {
+        // Offset tooltip from cursor
+        tooltipEl.style.top = (e.clientY + 15) + 'px';
+        tooltipEl.style.left = (e.clientX + 15) + 'px';
+    }
+
+    function hideTooltip() {
+        tooltipEl.style.display = 'none';
+    }
+    // ---------------------------
+
     function updateCoreVisual(cpu) {
         const el = document.getElementById(`core-${cpu}`);
         if (!el) return;
@@ -485,17 +536,7 @@
         const ind = el.querySelector('.indicators');
         ind.innerHTML = ''; 
         
-        // --- TOOLTIP GENERATION ---
-        if (tags.size > 0) {
-            const roleNames = [...tags].map(tid => {
-                const r = ROLES.find(x => x.id === tid);
-                return r ? r.name : tid;
-            }).join(', ');
-            el.title = `Core ${cpu}: ${roleNames}`;
-        } else {
-            el.title = `Core ${cpu}: Isolated / Unused`;
-        }
-        // --------------------------
+        // Removed old title attribute, now using custom tooltip handlers
 
         if (tags.size === 0) {
             el.classList.add('is-isolated');
@@ -559,18 +600,25 @@
                         cell.setAttribute('draggable', 'false'); 
                         cell.innerHTML = `<div class="core-num">${cpu}</div><div class="indicators"></div>`;
                         
+                        // --- EVENT HANDLERS (Paint + Tooltip) ---
                         cell.onmousedown = (e) => {
                             isMouseDown = true;
                             const isEraser = e.ctrlKey || e.metaKey;
                             applyTool(cpu, false, isEraser); 
                         };
                         cell.onmouseenter = (e) => {
+                            // Paint if dragging
                             if(isMouseDown) {
                                 const isEraser = e.ctrlKey || e.metaKey;
                                 applyTool(cpu, true, isEraser);
                             }
+                            // Show custom tooltip
+                            showTooltip(e, cpu);
                         };
+                        cell.onmousemove = moveTooltip;
+                        cell.onmouseleave = hideTooltip;
                         cell.ondragstart = () => false;
+                        // ----------------------------------------
 
                         l3Box.appendChild(cell);
                     });
