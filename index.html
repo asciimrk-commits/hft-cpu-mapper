@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>HFT Mapper v0.2.5 (Ghost Mode)</title>
+    <title>HFT Mapper v2.6 (Load Analysis)</title>
     <style>
         :root {
             --bg: #1e1e1e;
@@ -10,10 +10,10 @@
             --border: #333;
             --text: #ccc;
             
-            /* SIZING CONFIG */
-            --core-size: 50px;
+            /* SIZING */
+            --core-size: 55px;
             --core-font: 16px;
-            --l3-width: 260px;
+            --l3-width: 290px;
             
             /* Colors */
             --socket-border: #ce9178; 
@@ -30,31 +30,21 @@
             font-family: 'Segoe UI', 'Consolas', monospace;
             background: var(--bg);
             color: var(--text);
-            margin: 0;
-            padding: 0;
-            height: 100vh;
-            display: flex;
-            overflow: hidden;
-            user-select: none;
+            margin: 0; padding: 0; height: 100vh; display: flex;
+            overflow: hidden; user-select: none;
         }
         
         /* --- Sidebar --- */
         .sidebar {
-            width: 380px; 
+            width: 400px; /* Чуть шире для калькулятора */
             background: var(--panel);
             border-right: 1px solid var(--border);
-            display: flex;
-            flex-direction: column; 
-            padding: 20px;
-            gap: 15px;
+            display: flex; flex-direction: column; 
+            padding: 20px; gap: 15px;
             box-shadow: 2px 0 10px rgba(0,0,0,0.3);
-            z-index: 10;
-            height: 100vh; 
-            box-sizing: border-box;
-            overflow-y: auto; 
-            flex-shrink: 0;
+            z-index: 10; height: 100vh; 
+            box-sizing: border-box; overflow-y: auto;
         }
-
         .sidebar::-webkit-scrollbar { width: 8px; }
         .sidebar::-webkit-scrollbar-track { background: #252526; }
         .sidebar::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
@@ -71,8 +61,7 @@
 
         textarea#inputData {
             background: #111; color: #9cdcfe; border: 1px solid var(--border);
-            padding: 10px; 
-            height: 70px; min-height: 70px; 
+            padding: 10px; height: 70px; min-height: 70px; 
             font-family: monospace; font-size: 11px;
             white-space: pre; resize: vertical; width: 100%; box-sizing: border-box;
         }
@@ -86,6 +75,23 @@
         button.btn-copy { background: #333; border: 1px solid #555; color: #ccc; margin-bottom: 5px; margin-top: auto; }
         button.btn-copy:hover { background: #444; }
 
+        /* --- Calculator Section --- */
+        .calc-box {
+            background: #2d2d30; border: 1px solid #444; padding: 10px; border-radius: 4px;
+        }
+        .calc-row { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 13px; }
+        .calc-val { font-weight: bold; color: #fff; }
+        .calc-input { 
+            width: 50px; background: #111; border: 1px solid #555; color: #fff; text-align: center; 
+        }
+        .calc-result { 
+            margin-top: 10px; padding-top: 10px; border-top: 1px dashed #555; 
+            font-weight: bold; text-align: center; font-size: 14px;
+        }
+        .res-ok { color: #4caf50; }
+        .res-warn { color: #ff9800; }
+        .res-crit { color: #f44336; }
+
         /* --- Palette --- */
         .palette-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         .palette-item {
@@ -98,23 +104,12 @@
         .swatch { width: 12px; height: 12px; border-radius: 50%; }
 
         /* --- Output Box --- */
-        .output-wrapper {
-            display: flex;
-            flex-direction: column;
-            flex-grow: 1; 
-            min-height: 350px; 
-        }
-
+        .output-wrapper { display: flex; flex-direction: column; flex-grow: 1; min-height: 200px; }
         .output-box {
             font-family: monospace; font-size: 12px; color: #aaa; white-space: pre-wrap;
             background: #111; padding: 10px; border: 1px solid var(--border);
-            height: 100%; 
-            overflow-y: auto; 
-            box-sizing: border-box;
+            height: 100%; overflow-y: auto; box-sizing: border-box;
         }
-        .output-box::-webkit-scrollbar { width: 8px; }
-        .output-box::-webkit-scrollbar-track { background: #1e1e1e; }
-        .output-box::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
 
         /* --- Canvas --- */
         .main-view {
@@ -131,67 +126,41 @@
             border-bottom: 2px solid #444; padding-bottom: 8px; margin-bottom: 20px;
             display: flex; justify-content: space-between; align-items: center;
         }
-        .instance-tag {
-            background: #333; padding: 2px 8px; border-radius: 4px; font-size: 12px; color: #aaa; font-weight: normal;
-        }
+        .instance-tag { background: #333; padding: 2px 8px; border-radius: 4px; font-size: 12px; color: #aaa; font-weight: normal; }
 
         /* --- Hierarchy --- */
         .hierarchy-box { margin-bottom: 20px; border-radius: 6px; position: relative; }
         .box-label {
-            position: absolute; top: -11px; left: 15px;
-            padding: 0 8px; font-size: 13px; font-weight: bold;
-            cursor: pointer; border-radius: 2px; z-index: 5;
-            transition: all 0.2s;
+            position: absolute; top: -11px; left: 15px; padding: 0 8px; font-size: 13px; font-weight: bold;
+            cursor: pointer; border-radius: 2px; z-index: 5; transition: all 0.2s;
         }
-        .box-label:hover { transform: scale(1.1); color: #fff !important; text-shadow: 0 0 5px white;}
-
         .socket-box { border: 2px solid var(--socket-border); padding: 30px 20px 20px 20px; margin-bottom: 0; }
         .socket-label { background: var(--bg); color: var(--socket-border); border: 1px solid var(--socket-border); font-size: 14px; }
 
         .numa-box { 
-            border: 2px solid var(--numa-border); 
-            padding: 30px 20px 20px 20px; 
-            display: flex; flex-wrap: wrap; gap: 30px;
-            background: rgba(197, 134, 192, 0.03); 
-            transition: all 0.3s;
+            border: 2px solid var(--numa-border); padding: 30px 20px 20px 20px; 
+            display: flex; flex-wrap: wrap; gap: 30px; background: rgba(197, 134, 192, 0.03); 
         }
         .numa-label { background: var(--bg); color: var(--numa-border); border: 1px solid var(--numa-border); }
 
         .numa-box.is-network-node {
-            border: 3px solid var(--net-numa-border); 
-            background: rgba(0, 188, 242, 0.1); 
-            box-shadow: 0 0 20px rgba(0, 188, 242, 0.2); 
+            border: 3px solid var(--net-numa-border); background: rgba(0, 188, 242, 0.1); box-shadow: 0 0 20px rgba(0, 188, 242, 0.2); 
         }
         .numa-box.is-network-node .numa-label {
-            color: var(--net-numa-border);
-            border-color: var(--net-numa-border);
-            background: #181818;
-            font-weight: 900;
+            color: var(--net-numa-border); border-color: var(--net-numa-border); background: #181818; font-weight: 900;
         }
 
         .nic-badge {
-            display: inline-block;
-            background: var(--net-badge-bg);
-            color: var(--net-badge-text);
-            font-size: 12px;
-            padding: 4px 10px;
-            border-radius: 4px;
-            margin-left: 10px;
-            position: absolute;
-            top: -14px;
-            right: 20px;
-            font-weight: bold;
-            box-shadow: 0 0 10px rgba(0,120,212, 0.6);
-            animation: pulse 2s infinite;
-            z-index: 6;
+            display: inline-block; background: var(--net-badge-bg); color: var(--net-badge-text);
+            font-size: 12px; padding: 4px 10px; border-radius: 4px; margin-left: 10px;
+            position: absolute; top: -14px; right: 20px; font-weight: bold;
+            box-shadow: 0 0 10px rgba(0,120,212, 0.6); animation: pulse 2s infinite; z-index: 6;
         }
         @keyframes pulse { 0% { opacity: 0.8; } 50% { opacity: 1; text-shadow: 0 0 5px white; } 100% { opacity: 0.8; } }
 
         .l3-box {
             border: 1px dashed var(--l3-border); background: var(--l3-bg);
-            padding: 35px 12px 12px 12px; display: flex; flex-wrap: wrap; gap: 8px;
-            width: var(--l3-width); 
-            align-content: flex-start;
+            padding: 35px 12px 12px 12px; display: flex; flex-wrap: wrap; gap: 8px; width: var(--l3-width); align-content: flex-start;
         }
         .l3-label { 
             top: -12px; left: 50%; transform: translateX(-50%);
@@ -202,39 +171,31 @@
         .core {
             width: var(--core-size); height: var(--core-size);
             background: #252526; border: 1px solid #555;
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-            cursor: crosshair; position: relative;
+            display: flex; flex-direction: column; justify-content: flex-start; align-items: center;
+            cursor: crosshair; position: relative; padding-top: 10px; box-sizing: border-box;
         }
-        
-        /* Empty/Isolated Core */
         .core.is-isolated { opacity: 0.4; }
-        
-        /* Ghost Core (Occupied by other instance) */
         .core.is-ghost {
             opacity: 0.5;
-            /* Striped background to indicate "occupied elsewhere" */
-            background: repeating-linear-gradient(
-                45deg,
-                #2a2a2a,
-                #2a2a2a 5px,
-                #3a3a3a 5px,
-                #3a3a3a 10px
-            );
-            border: 1px dashed #666;
-            color: #777;
+            background: repeating-linear-gradient(45deg, #2a2a2a, #2a2a2a 5px, #3a3a3a 5px, #3a3a3a 10px);
+            border: 1px dashed #666; color: #777;
         }
-        .core.is-ghost .core-num { color: #888; text-shadow: none; }
-
         .core:hover { border-color: #fff; z-index: 100; box-shadow: 0 0 8px #fff; opacity: 1;}
         .core-num { font-size: var(--core-font); font-weight: bold; color: #ddd; z-index: 2; text-shadow: 0 1px 3px black;}
         
-        .indicators {
-            position: absolute; bottom: 0; left: 0; right: 0; height: 100%;
-            display: flex; opacity: 0.6; z-index: 1;
+        /* LOAD BAR inside Core */
+        .load-bar-container {
+            position: absolute; bottom: 4px; left: 4px; right: 4px; height: 6px;
+            background: #111; border-radius: 2px; overflow: hidden;
         }
-        .ind-bar { flex-grow: 1; height: 100%; }
+        .load-bar-fill {
+            height: 100%; width: 0%; transition: width 0.5s;
+        }
+        .load-text {
+            position: absolute; bottom: 12px; font-size: 10px; color: #aaa; width: 100%; text-align: center;
+        }
 
-        /* --- TOOLTIP --- */
+        /* Tooltip */
         #tooltip {
             position: fixed; display: none; background: rgba(25, 25, 25, 0.95);
             border: 1px solid #555; padding: 10px; border-radius: 5px; color: #fff;
@@ -244,7 +205,7 @@
         .tooltip-header { font-weight: bold; margin-bottom: 5px; color: #fff; border-bottom: 1px solid #444; padding-bottom: 3px;}
         .tooltip-row { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
         .tooltip-swatch { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;}
-        .tooltip-ghost { color: #888; font-style: italic; margin-top: 5px; border-top: 1px dashed #444; padding-top: 3px; }
+        .tooltip-load { font-weight: bold; color: #fff; margin-bottom: 5px; font-size: 14px; }
 
     </style>
 </head>
@@ -254,30 +215,54 @@
     <div>
         <h3>1. Данные</h3>
         <div class="hint">
-            1. Зайди на <b>duty.virt.qb.loc</b><br>
-            2. Выполни: <span class="cmd-block">cpu-map $BS</span>
-            3. Вставь вывод ниже:
+            Вставь полный вывод <code>cpu-map</code> (с mpstat):
         </div>
-        <textarea id="inputData" placeholder="=== Подключение к ... ===&#10;>>> 1. LSCPU -E&#10;..."></textarea>
+        <textarea id="inputData" placeholder="..."></textarea>
         <button class="btn-action" onclick="render()">Построить карту</button>
     </div>
+    
     <hr style="border: 0; border-top: 1px solid #333; width: 100%; margin: 10px 0;">
+    
     <div>
         <h3>2. Инструменты</h3>
-        <div class="hint"><b>LKM + Drag:</b> Рисовать | <b>Ctrl + Drag:</b> Стереть</div>
         <div id="palette" class="palette-grid"></div>
     </div>
+
     <hr style="border: 0; border-top: 1px solid #333; width: 100%; margin: 10px 0;">
+
     <div class="output-wrapper">
         <h3>3. Конфиг</h3>
-        <button class="btn-action btn-copy" onclick="copyConfig()">Скопировать конфиг</button>
+        <button class="btn-action btn-copy" onclick="copyConfig()">Скопировать</button>
         <div class="output-box" id="output"></div>
+    </div>
+
+    <hr style="border: 0; border-top: 1px solid #333; width: 100%; margin: 10px 0;">
+
+    <div>
+        <h3>4. Сайзинг ОС</h3>
+        <div class="calc-box">
+            <div class="calc-row">
+                <span>Текущие ядра ОС:</span>
+                <span class="calc-val" id="calc-current-cores">-</span>
+            </div>
+            <div class="calc-row">
+                <span>Общая нагрузка:</span>
+                <span class="calc-val" id="calc-total-load">-</span>
+            </div>
+            <div class="calc-row" style="margin-top:10px; align-items:center;">
+                <span>Цель (кол-во ядер):</span>
+                <input type="number" id="calc-target-input" class="calc-input" value="3" min="1" onchange="calculateSizing()">
+            </div>
+            <div class="calc-result" id="calc-result-area">
+                Ожидание данных...
+            </div>
+        </div>
     </div>
 </div>
 
 <div class="main-view" id="canvas">
     <div style="color:#555; margin-top:100px; text-align:center; font-size:1.4em;">
-        &larr; Ожидаю данные...
+        &larr; Жду данные...
     </div>
 </div>
 
@@ -303,6 +288,8 @@
     let netNumaNodes = new Set();
     let serverName = '';
     let instances = {}; 
+    let cpuLoadMap = {}; // { '0': 15.5, '1': 99.0 }
+    
     let isMouseDown = false; 
     const tooltipEl = document.getElementById('tooltip');
 
@@ -352,10 +339,12 @@
         netNumaNodes = new Set();
         serverName = '';
         instances = { 'Physical': {} }; 
+        cpuLoadMap = {}; // Reset Load
 
         const lines = text.split('\n');
         let mode = 'none'; 
         let currentInstance = null; 
+        let ignoreNetSection = false;
 
         for (let line of lines) {
             line = line.trim();
@@ -369,7 +358,9 @@
             if (line.includes('>>> 1. LSCPU')) { mode = 'lscpu'; continue; }
             if (line.includes('>>> 2. NETWORK')) { mode = 'network'; continue; }
             if (line.includes('>>> 3. RUNTIME CONFIG')) { mode = 'runtime'; continue; }
+            if (line.includes('>>> 4. CPU LOAD')) { mode = 'cpuload'; continue; }
 
+            // --- 1. LSCPU ---
             if (mode === 'lscpu') {
                 if (line.startsWith('CPU')) continue;
                 const parts = line.split(/\s+/);
@@ -395,6 +386,7 @@
                 if (parseInt(cpu) === 0) addTag('Physical', cpu, 'sys_os');
             }
 
+            // --- 3. RUNTIME ---
             if (mode === 'runtime') {
                 const instanceMatch = line.match(/^(\w+):$/);
                 if (instanceMatch) {
@@ -430,6 +422,9 @@
                     const rangeStr = line.replace('System cpus:', '').trim();
                     parseRangeStr(rangeStr).forEach(c => addTag('Physical', c.toString(), 'sys_os'));
                 }
+
+                if (line.includes('topology information')) ignoreNetSection = true;
+                if (line.includes('Network interfaces cpus')) ignoreNetSection = false;
                 
                 if (line.startsWith('net') && line.includes(':')) {
                      const parts = line.split(':');
@@ -448,9 +443,43 @@
                             }
                             if (maxNode !== -1) netNumaNodes.add(maxNode);
                         } else {
-                            cores.forEach(c => addTag('Physical', c.toString(), 'net_irq'));
+                            if(!ignoreNetSection) cores.forEach(c => addTag('Physical', c.toString(), 'net_irq'));
                         }
                      }
+                }
+            }
+
+            // --- 4. CPU LOAD (MPSTAT) ---
+            if (mode === 'cpuload') {
+                // Ignore headers
+                if (line.includes('CPU') || line.includes('all') || line.includes('Average')) continue;
+                
+                // Regex to capture CPU ID and %idle (usually last column)
+                // Format: 11:07:20 AM    0   10.00 ... 83.00
+                const parts = line.split(/\s+/);
+                // We assume the last column is %idle. Length varies if AM/PM is present.
+                if (parts.length > 3) {
+                    const idleStr = parts[parts.length - 1];
+                    const cpuStr = parts.length > 11 ? parts[1] : parts[0]; // Heuristic for timestamp presence
+                    
+                    // Better approach: Find the column index of CPU. usually index 1 or 0 depending on timestamp.
+                    // Let's iterate backwards. Last is idle.
+                    const idle = parseFloat(idleStr);
+                    
+                    // CPU ID is usually the first *integer* found in the line (skipping time)
+                    let cpuId = -1;
+                    for(let i=0; i<parts.length-1; i++) {
+                        // Skip time string like 11:00:00 or AM/PM
+                        if (parts[i].includes(':') || parts[i] === 'AM' || parts[i] === 'PM') continue;
+                        if (!isNaN(parseInt(parts[i]))) {
+                            cpuId = parts[i];
+                            break;
+                        }
+                    }
+
+                    if (cpuId !== -1 && !isNaN(idle)) {
+                        cpuLoadMap[cpuId] = (100 - idle).toFixed(1);
+                    }
                 }
             }
         }
@@ -472,25 +501,30 @@
         }
         updateCoreVisual(instanceName, cpu);
         updateStats();
+        calculateSizing();
     }
 
     function showTooltip(e, instanceName, cpu) {
         let html = `<div class="tooltip-header">Core ${cpu} (${instanceName}):</div>`;
         
-        // 1. Current Tags
+        // Load
+        const load = cpuLoadMap[cpu];
+        if (load !== undefined) {
+            let color = '#4caf50';
+            if(load > 50) color = '#ffeb3b';
+            if(load > 80) color = '#f44336';
+            html += `<div class="tooltip-load" style="color:${color}">Load: ${load}%</div>`;
+        }
+
         const tags = instances[instanceName]?.[cpu];
         if (tags && tags.size > 0) {
             tags.forEach(tid => {
                  const r = ROLES.find(x => x.id === tid);
-                 if(r) {
-                    html += `<div class="tooltip-row"><div class="tooltip-swatch" style="background:${r.color}"></div>${r.name}</div>`;
-                 }
+                 if(r) html += `<div class="tooltip-row"><div class="tooltip-swatch" style="background:${r.color}"></div>${r.name}</div>`;
             });
-        } else {
-            html += `<div style="color:#888; font-size:11px;">Unused by ${instanceName}</div>`;
         }
 
-        // 2. Ghost Tags (Who else is here?)
+        // Ghost
         const allKeys = Object.keys(instances).filter(k => k !== instanceName);
         let occupiedBy = [];
         allKeys.forEach(otherInst => {
@@ -499,9 +533,8 @@
                 occupiedBy.push(`${otherInst} (${roles})`);
             }
         });
-
         if (occupiedBy.length > 0) {
-            html += `<div class="tooltip-ghost">Also on: ${occupiedBy.join(', ')}</div>`;
+            html += `<div style="margin-top:5px; border-top:1px dashed #444; padding-top:2px; font-size:11px; color:#999;">Also on: ${occupiedBy.join(', ')}</div>`;
         }
 
         tooltipEl.innerHTML = html;
@@ -514,55 +547,77 @@
         tooltipEl.style.left = (e.clientX + 15) + 'px';
     }
 
-    function hideTooltip() {
-        tooltipEl.style.display = 'none';
-    }
+    function hideTooltip() { tooltipEl.style.display = 'none'; }
 
     function updateCoreVisual(instanceName, cpu) {
         const el = document.getElementById(`core-${instanceName}-${cpu}`);
         if (!el) return;
         const tags = instances[instanceName]?.[cpu] || new Set();
-        const ind = el.querySelector('.indicators');
-        ind.innerHTML = ''; 
-
+        
         // Reset classes
         el.className = 'core';
 
+        // 1. Role Styling
         if (tags.size > 0) {
-            // Active Core
             if(tags.size === 1) {
                 const r = ROLES.find(x=>x.id === [...tags][0]);
                 el.style.borderColor = r ? r.color : '#fff';
             } else {
                 el.style.borderColor = '#fff';
             }
+        } else {
+            const allKeys = Object.keys(instances).filter(k => k !== instanceName);
+            let isGhost = false;
+            for(const other of allKeys) {
+                if(instances[other]?.[cpu]?.size > 0) { isGhost = true; break; }
+            }
+            if (isGhost) el.classList.add('is-ghost');
+            else { el.classList.add('is-isolated'); el.style.border = '1px solid #555'; }
+        }
+
+        // 2. Load Bar rendering
+        const load = parseFloat(cpuLoadMap[cpu] || 0);
+        let barColor = '#4caf50'; // Green
+        if (load > 50) barColor = '#ffeb3b'; // Yellow
+        if (load > 80) barColor = '#f44336'; // Red
+
+        const barContainer = document.createElement('div');
+        barContainer.className = 'load-bar-container';
+        const barFill = document.createElement('div');
+        barFill.className = 'load-bar-fill';
+        barFill.style.width = load + '%';
+        barFill.style.backgroundColor = barColor;
+        barContainer.appendChild(barFill);
+        
+        // Text inside core
+        const textDiv = document.createElement('div');
+        textDiv.className = 'core-num';
+        textDiv.innerText = cpu;
+
+        const loadText = document.createElement('div');
+        loadText.className = 'load-text';
+        loadText.innerText = load > 0 ? Math.round(load) + '%' : '';
+
+        // Role Indicators (dots at bottom)
+        const indicators = document.createElement('div');
+        indicators.className = 'indicators';
+        if (tags.size > 0) {
             tags.forEach(roleId => {
                 const role = ROLES.find(r => r.id === roleId);
                 if (role) {
                     const bar = document.createElement('div');
                     bar.className = 'ind-bar';
                     bar.style.backgroundColor = role.color;
-                    ind.appendChild(bar);
+                    indicators.appendChild(bar);
                 }
             });
-        } else {
-            // Check for Ghosts (Occupied by others)
-            const allKeys = Object.keys(instances).filter(k => k !== instanceName);
-            let isGhost = false;
-            for(const other of allKeys) {
-                if(instances[other]?.[cpu]?.size > 0) {
-                    isGhost = true;
-                    break;
-                }
-            }
-
-            if (isGhost) {
-                el.classList.add('is-ghost');
-            } else {
-                el.classList.add('is-isolated');
-                el.style.border = '1px solid #555';
-            }
         }
+
+        el.innerHTML = '';
+        el.appendChild(textDiv);
+        if(load > 0) el.appendChild(loadText); // Show % text
+        el.appendChild(barContainer); // Show bar
+        el.appendChild(indicators);
     }
 
     function render() {
@@ -585,7 +640,7 @@
             
             const title = document.createElement('div');
             title.className = 'map-title';
-            title.innerHTML = `<span>${instName === 'Physical' ? 'Physical Layer (OS/Net)' : instName}</span> <span class="instance-tag">${instName}</span>`;
+            title.innerHTML = `<span>${instName === 'Physical' ? 'Physical Layer' : instName}</span> <span class="instance-tag">${instName}</span>`;
             section.appendChild(title);
 
             Object.keys(geom).sort((a,b)=>a-b).forEach(s => {
@@ -612,7 +667,6 @@
                             cell.id = `core-${instName}-${cpu}`; 
                             cell.dataset.cpu = cpu;
                             cell.setAttribute('draggable', 'false'); 
-                            cell.innerHTML = `<div class="core-num">${cpu}</div><div class="indicators"></div>`;
                             
                             cell.onmousedown = (e) => {
                                 isMouseDown = true;
@@ -644,8 +698,6 @@
         allKeys.forEach(inst => {
             if(instances[inst]) {
                 Object.keys(instances[inst]).forEach(cpu => updateCoreVisual(inst, cpu));
-                
-                // Also update visual for Ghosts (cores NOT in current instance but occupied in others)
                 const usedCores = new Set();
                 allKeys.forEach(other => {
                     if(other !== inst && instances[other]) {
@@ -656,6 +708,44 @@
             }
         });
         updateStats();
+        calculateSizing();
+    }
+
+    // --- SIZING CALCULATOR ---
+    function calculateSizing() {
+        const phys = instances['Physical'];
+        if (!phys) return;
+
+        // 1. Identify System Cores
+        const sysCores = [];
+        for (const [cpu, tags] of Object.entries(phys)) {
+            if (tags.has('sys_os')) sysCores.push(cpu);
+        }
+
+        // 2. Sum Load
+        let totalLoad = 0;
+        sysCores.forEach(c => {
+            totalLoad += parseFloat(cpuLoadMap[c] || 0);
+        });
+
+        // 3. Update UI
+        document.getElementById('calc-current-cores').innerText = sysCores.length;
+        document.getElementById('calc-total-load').innerText = Math.round(totalLoad) + '%';
+
+        const targetCount = parseInt(document.getElementById('calc-target-input').value) || 1;
+        
+        let avgLoad = 0;
+        if (targetCount > 0) avgLoad = totalLoad / targetCount;
+        
+        const resDiv = document.getElementById('calc-result-area');
+        let status = '';
+        let statusClass = '';
+
+        if (avgLoad < 50) { status = 'OK'; statusClass = 'res-ok'; }
+        else if (avgLoad < 80) { status = 'WARNING'; statusClass = 'res-warn'; }
+        else { status = 'OVERLOAD'; statusClass = 'res-crit'; }
+
+        resDiv.innerHTML = `Прогноз: <span class="${statusClass}">${Math.round(avgLoad)}%</span> / ядро<br><span style="font-size:12px; color:#aaa;">(${status})</span>`;
     }
 
     function updateStats() {
