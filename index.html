@@ -436,6 +436,23 @@
         { id: 'trash',    name: 'Trash',         color: '#8a6d3b' }
     ];
 
+    // Role mapping from bender-cpuinfo keys to role IDs
+    const ROLE_KEY_MAP = {
+        'AllRobotsThCPU': 'ar',
+        'ClickHouseCores': 'click',
+        'Formula': 'formula',
+        'GatewaysDefault': 'gateway',
+        'RemoteFormulaCPU': 'rf',
+        'RobotsDefault': 'robot',
+        'TrashCPU': 'trash',
+        'UdpReceiveCores': 'udp',
+        'UdpSendCores': 'udp'
+    };
+
+    // Create role lookup map for O(1) access
+    const ROLES_BY_ID = {};
+    ROLES.forEach(r => ROLES_BY_ID[r.id] = r);
+
     let activeTool = ROLES[3];
     let globalGeometry = {}; 
     let coreNumaMap = {};
@@ -675,10 +692,9 @@
                     if(name !== 'Overview' && name !== 'Instance' && name !== 'Cpus') {
                          currentInstance = name;
                          if (!instances[currentInstance]) instances[currentInstance] = {};
-                    } else if (name === 'Overview') {
-                        currentInstance = 'Physical'; 
-                    } else if (name === 'Cpus') {
-                        currentInstance = 'Physical'; // Parse cpus overview section
+                    } else if (name === 'Overview' || name === 'Cpus') {
+                        // Both Overview and Cpus sections contain Physical/system-level CPU info
+                        currentInstance = 'Physical';
                     }
                 }
 
@@ -705,27 +721,16 @@
                     
                     // Parse instance-specific roles from the cpu_id line
                     // Example: {'cpu_id': 2, 'isolated': True, 'TrashCPU': ['HUB7'], 'ClickHouseCores': ['HUB7']}
-                    const rolePatterns = [
-                        { pattern: /'TrashCPU':\s*\[([^\]]+)\]/, roleId: 'trash' },
-                        { pattern: /'ClickHouseCores':\s*\[([^\]]+)\]/, roleId: 'click' },
-                        { pattern: /'UdpSendCores':\s*\[([^\]]+)\]/, roleId: 'udp' },
-                        { pattern: /'UdpReceiveCores':\s*\[([^\]]+)\]/, roleId: 'udp' },
-                        { pattern: /'GatewaysDefault':\s*\[([^\]]+)\]/, roleId: 'gateway' },
-                        { pattern: /'RobotsDefault':\s*\[([^\]]+)\]/, roleId: 'robot' },
-                        { pattern: /'AllRobotsThCPU':\s*\[([^\]]+)\]/, roleId: 'ar' },
-                        { pattern: /'RemoteFormulaCPU':\s*\[([^\]]+)\]/, roleId: 'rf' },
-                        { pattern: /'Formula':\s*\[([^\]]+)\]/, roleId: 'formula' }
-                    ];
-                    
-                    rolePatterns.forEach(({pattern, roleId}) => {
+                    // Use ROLE_KEY_MAP to avoid duplication
+                    Object.keys(ROLE_KEY_MAP).forEach(key => {
+                        const pattern = new RegExp(`'${key}':\\s*\\[([^\\]]+)\\]`);
                         const match = line.match(pattern);
                         if (match) {
-                            // Extract instance names from the list
                             const instancesStr = match[1];
                             const instanceNames = instancesStr.split(',').map(s => s.trim().replace(/['"]/g, ''));
                             instanceNames.forEach(instName => {
                                 if (!instances[instName]) instances[instName] = {};
-                                addTag(instName, cpuId, roleId);
+                                addTag(instName, cpuId, ROLE_KEY_MAP[key]);
                             });
                         }
                     });
@@ -737,16 +742,7 @@
                     const coresStr = dictMatch[2];
                     const cores = coresStr.split(',').map(x => x.trim());
 
-                    let roleId = null;
-                    if (key === 'AllRobotsThCPU') roleId = 'ar';
-                    if (key === 'ClickHouseCores') roleId = 'click';
-                    if (key === 'Formula') roleId = 'formula';
-                    if (key === 'GatewaysDefault') roleId = 'gateway';
-                    if (key === 'RemoteFormulaCPU') roleId = 'rf';
-                    if (key === 'RobotsDefault') roleId = 'robot';
-                    if (key === 'TrashCPU') roleId = 'trash';
-                    if (key === 'UdpReceiveCores' || key === 'UdpSendCores') roleId = 'udp';
-
+                    const roleId = ROLE_KEY_MAP[key];
                     if (roleId) cores.forEach(c => addTag(currentInstance, c, roleId));
                 }
 
@@ -858,7 +854,7 @@
             html += `<div style="margin-top:5px; border-top:1px dashed #444; padding-top:5px;">`;
             html += `<strong>Physical Roles:</strong>`;
             physTags.forEach(tid => {
-                 const r = ROLES.find(x => x.id === tid);
+                 const r = ROLES_BY_ID[tid];
                  if(r) html += `<div class="tooltip-row"><div class="tooltip-swatch" style="background:${r.color}"></div>${r.name}</div>`;
             });
             html += `</div>`;
@@ -870,7 +866,7 @@
         instKeys.forEach(instName => {
             if (instances[instName]?.[cpu]?.size > 0) {
                 const roles = Array.from(instances[instName][cpu]).map(roleId => {
-                    const r = ROLES.find(x => x.id === roleId);
+                    const r = ROLES_BY_ID[roleId];
                     return r ? r.name : roleId;
                 }).join(', ');
                 instanceAssignments.push(`${instName}: ${roles}`);
@@ -909,8 +905,9 @@
 
         // 1. Apply Role Color to Background
         if (tags.size > 0) {
-            // Get the primary role color
-            const primaryRole = ROLES.find(x => x.id === [...tags][0]);
+            // Get the primary role color using ROLES_BY_ID for O(1) lookup
+            const primaryRoleId = [...tags][0];
+            const primaryRole = ROLES_BY_ID[primaryRoleId];
             if (primaryRole) {
                 // Apply role color with some transparency for layering
                 el.style.background = `linear-gradient(135deg, ${primaryRole.color}22 0%, ${primaryRole.color}44 100%)`;
@@ -921,7 +918,7 @@
             // If multiple roles, add a gradient or indicator
             if (tags.size > 1) {
                 const colors = Array.from(tags).map(tid => {
-                    const r = ROLES.find(x => x.id === tid);
+                    const r = ROLES_BY_ID[tid];
                     return r ? r.color : '#fff';
                 });
                 // Create a multi-color gradient for multiple roles
@@ -937,27 +934,23 @@
         } else {
             // Check if core is used by other instances (ghost mode)
             const allKeys = Object.keys(instances).filter(k => k !== instanceName);
-            let isGhost = false;
-            let ghostRoles = [];
+            let ghostRole = null;
             
+            // Find first ghost role and break early
             for(const other of allKeys) {
-                if(instances[other]?.[cpu]?.size > 0) { 
-                    isGhost = true;
-                    ghostRoles.push(...Array.from(instances[other][cpu]));
+                if(instances[other]?.[cpu]?.size > 0) {
+                    const ghostRoleId = [...instances[other][cpu]][0];
+                    ghostRole = ROLES_BY_ID[ghostRoleId];
+                    break; // Early exit once we find a ghost role
                 }
             }
             
-            if (isGhost) {
+            if (ghostRole) {
                 el.classList.add('is-ghost');
                 // Show ghost role color with low opacity
-                if (ghostRoles.length > 0) {
-                    const ghostRole = ROLES.find(x => x.id === ghostRoles[0]);
-                    if (ghostRole) {
-                        el.style.background = `linear-gradient(135deg, ${ghostRole.color}11 0%, ${ghostRole.color}22 100%)`;
-                        el.style.borderColor = ghostRole.color;
-                        el.style.opacity = '0.4';
-                    }
-                }
+                el.style.background = `linear-gradient(135deg, ${ghostRole.color}11 0%, ${ghostRole.color}22 100%)`;
+                el.style.borderColor = ghostRole.color;
+                el.style.opacity = '0.4';
             } else {
                 el.classList.add('is-isolated'); 
                 el.style.border = '1px solid #555';
@@ -992,7 +985,7 @@
         indicators.className = 'indicators';
         if (tags.size > 0) {
             tags.forEach(roleId => {
-                const role = ROLES.find(r => r.id === roleId);
+                const role = ROLES_BY_ID[roleId];
                 if (role) {
                     const bar = document.createElement('div');
                     bar.className = 'ind-bar';
