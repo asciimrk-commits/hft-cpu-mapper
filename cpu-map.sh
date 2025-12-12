@@ -1,148 +1,85 @@
 #!/bin/bash
 
-# HFT CPU Mapper Data Collection Script
-# Usage: ./cpu-map.sh <HOSTNAME> [DURATION]
-# Example: ./cpu-map.sh trade0526 15
+# ===== HFT CPU Mapper - Data Collection Script v2.1 =====
+# Формат вывода совместим с HFT Mapper v2.6 (оригинальный)
 
-# Color codes for output
+# --- Цвета ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Default duration for mpstat
-DEFAULT_DURATION=15
-
-# Check arguments
-if [ $# -lt 1 ]; then
-    echo -e "${RED}Error: Missing hostname argument${NC}"
-    echo "Usage: $0 <HOSTNAME> [DURATION]"
-    echo "Example: $0 trade0526 15"
+# --- Проверяем аргументы ---
+if [ -z "$1" ]; then
+    echo -e "${RED}Ошибка: Не указано имя сервера. ${NC}"
+    echo "Использование: $0 <HOSTNAME> [DURATION]"
+    echo "Пример: $0 trade0526 15"
     exit 1
 fi
 
-HOSTNAME=$1
-DURATION=${2:-$DEFAULT_DURATION}
+HOST="${1}.qb.loc"
+DURATION="${2:-15}"
 
-echo -e "${BLUE}=== HFT CPU Mapper Data Collection ===${NC}"
-echo -e "${BLUE}Target: ${HOSTNAME}${NC}"
-echo -e "${BLUE}Duration: ${DURATION}s${NC}"
-echo -e "${BLUE}Timestamp: $(date '+%Y-%m-%d %H:%M:%S')${NC}"
-echo ""
-
-# Check host availability
-echo -e "${YELLOW}Checking host availability...${NC}"
-if ! ping -c 1 -W 2 "$HOSTNAME" &>/dev/null; then
-    echo -e "${RED}✗ Host $HOSTNAME is not reachable${NC}"
+# --- Проверка доступности хоста ПЕРЕД запросом пароля ---
+echo -e "${YELLOW}Проверяю доступность $HOST...${NC}" >&2
+if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "$HOST" "exit" 2>/dev/null; then
+    echo -e "${RED}Ошибка:  Не могу подключиться к $HOST${NC}" >&2
+    echo "Проверьте:  1) Хост существует 2) SSH ключи настроены 3) Сеть доступна" >&2
     exit 1
 fi
-echo -e "${GREEN}✓ Host is reachable${NC}"
+echo -e "${GREEN}OK${NC}" >&2
 
-# Prompt for password
-echo -e "${YELLOW}Enter password for $HOSTNAME:${NC}"
-read -s PASSWORD
-echo ""
+# --- Запрашиваем sudo пароль локально (скрытый ввод) ---
+read -s -p "Введите sudo пароль для $HOST: " SUDO_PASS
+echo "" >&2
+echo -e "${YELLOW}Подключаюсь и собираю данные (это займет ~${DURATION} секунд из-за mpstat)...${NC}" >&2
 
-# Test SSH connection and sudo access
-echo -e "${YELLOW}Validating SSH and sudo access...${NC}"
-if ! sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 "root@${HOSTNAME}" "sudo -n true" 2>/dev/null; then
-    echo -e "${RED}✗ Failed to connect or sudo access denied${NC}"
-    exit 1
-fi
-echo -e "${GREEN}✓ SSH and sudo access validated${NC}"
-echo ""
+# --- Выполняем подключение и сбор данных ---
+ssh -T -o BatchMode=yes -o ConnectTimeout=5 "$HOST" << EOF
+    # Активируем sudo тихо
+    echo "$SUDO_PASS" | sudo -S -v 2>/dev/null
 
-# Start data collection
-echo -e "${GREEN}=== Starting data collection ===${NC}"
-echo ""
-
-# Function to execute remote command
-remote_exec() {
-    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "root@${HOSTNAME}" "$1"
-}
-
-echo "=== Подключение к $HOSTNAME ==="
-echo ""
-
-# 1. LSCPU
-echo ">>> 1. LSCPU"
-remote_exec "lscpu -p=CPU,NODE,SOCKET,CORE,CACHE,ONLINE | grep -v '^#'"
-echo ""
-
-# 2. NUMA TOPOLOGY
-echo ">>> 2. NUMA TOPOLOGY"
-remote_exec "numactl -H"
-echo ""
-
-# 3. ISOLATED CORES
-echo ">>> 3. ISOLATED CORES"
-remote_exec "cat /sys/devices/system/cpu/isolated 2>/dev/null || echo 'none'"
-echo ""
-
-# 4. NETWORK INFORMATION
-echo ">>> 4. NETWORK"
-echo "--- Network Interfaces ---"
-remote_exec "
-for iface in \$(ls /sys/class/net/ | grep -E '^(eth|ens|enp)'); do
-    echo \"Interface: \$iface\"
-    
-    # Get NUMA node
-    numa_node=\$(cat /sys/class/net/\$iface/device/numa_node 2>/dev/null || echo 'N/A')
-    echo \"  NUMA Node: \$numa_node\"
-    
-    # Get driver
-    driver=\$(readlink /sys/class/net/\$iface/device/driver 2>/dev/null | xargs basename || echo 'N/A')
-    echo \"  Driver: \$driver\"
-    
-    # Get IRQ CPUs
-    if [ -d \"/sys/class/net/\$iface/device/msi_irqs\" ]; then
-        irqs=\$(ls /sys/class/net/\$iface/device/msi_irqs 2>/dev/null | head -n 1)
-        if [ -n \"\$irqs\" ]; then
-            for irq in \$irqs; do
-                smp_affinity=\$(cat /proc/irq/\$irq/smp_affinity_list 2>/dev/null || echo 'N/A')
-                echo \"  IRQ CPUs: \$smp_affinity\"
-                break
-            done
-        fi
+    if [ \$? -ne 0 ]; then
+        echo "ОШИБКА: Неверный пароль или нет прав sudo."
+        exit 1
     fi
+
+    # === ЗАГОЛОВОК ===
+    echo "=== Подключение к $HOST ==="
+
+    # === 1. LSCPU (ОРИГИНАЛЬНЫЙ ФОРМАТ - space separated) ===
     echo ""
-done
-"
+    echo ">>> 1. LSCPU -E"
+    lscpu -e | grep yes
 
-# 5. RUNTIME CONFIG
-echo ">>> 5. RUNTIME CONFIG"
-remote_exec "
-if [ -f /etc/qb-robot-runtime.conf ]; then
-    cat /etc/qb-robot-runtime.conf
-else
-    echo 'Overview:'
-    cat /proc/cmdline | grep -o 'isolcpus=[^ ]*' || echo 'No isolcpus'
-    echo ''
-    echo 'System cpus: '
-    cat /sys/devices/system/cpu/online
-fi
-"
-echo ""
+    # === 2. NETWORK NUMA NODES (ОРИГИНАЛЬНЫЙ ФОРМАТ) ===
+    echo ""
+    echo ">>> 2. NETWORK NUMA NODES"
 
-# 6. TOP INTERRUPTS
-echo ">>> 6. TOP INTERRUPTS"
-echo "Top 10 interrupt sources:"
-remote_exec "
-cat /proc/interrupts | awk 'NR>1 {
-    sum=0;
-    for(i=2; i<=NF-1; i++) {
-        if(\$i ~ /^[0-9]+$/) sum+=\$i
-    }
-    if(sum>0) print sum, \$0
-}' | sort -rn | head -10 | awk '{first=\$1; \$1=\"\"; print \$0, \"(Total:\", first, \")\"}'
-"
-echo ""
+    grep -oh '[0-9]*' /sys/class/net/*/device/numa_node 2>/dev/null
 
-# 7. CPU LOAD
-echo ">>> 7. CPU LOAD (mpstat ${DURATION}s)"
-echo -e "${YELLOW}Collecting CPU load data (${DURATION}s)...${NC}"
-remote_exec "mpstat -P ALL $DURATION 1 | tail -n +3"
-echo ""
 
-echo -e "${GREEN}=== Data collection completed ===${NC}"
+    # === 3. RUNTIME CONFIG (bender) ===
+    echo ""
+    echo ">>> 3. RUNTIME CONFIG"
+    if command -v bender-cpuinfo &> /dev/null; then
+        sudo -n bender-cpuinfo 2>/dev/null
+        echo ""
+        echo "Network interfaces cpus:"
+        sudo -n bender-cpuinfo -o net 2>/dev/null
+    else
+        echo "# bender-cpuinfo не установлен"
+    fi
+
+    # === 4. CPU LOAD (MPSTAT) ===
+    echo ""
+    echo ">>> 4. CPU LOAD (MPSTAT)"
+    if command -v mpstat &> /dev/null; then
+        LC_ALL=C mpstat -P ALL $DURATION 1
+    else
+        echo "# mpstat не установлен (sudo apt install sysstat)"
+    fi
+EOF
+
+echo "" >&2
+echo -e "${GREEN}=== Сбор данных завершен ===${NC}" >&2
