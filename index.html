@@ -36,11 +36,11 @@
         
         /* --- Sidebar --- */
         .sidebar {
-            width: 400px; /* Чуть шире для калькулятора */
+            width: 300px; /* Compact sidebar */
             background: var(--panel);
             border-right: 1px solid var(--border);
             display: flex; flex-direction: column; 
-            padding: 20px; gap: 15px;
+            padding: 15px; gap: 12px;
             box-shadow: 2px 0 10px rgba(0,0,0,0.3);
             z-index: 10; height: 100vh; 
             box-sizing: border-box; overflow-y: auto;
@@ -49,11 +49,11 @@
         .sidebar::-webkit-scrollbar-track { background: #252526; }
         .sidebar::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
 
-        h3 { margin: 0 0 8px 0; color: #fff; font-size: 16px; text-transform: uppercase; letter-spacing: 1px; }
+        h3 { margin: 0 0 6px 0; color: #fff; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
         
         .hint { 
-            font-size: 12px; color: #bbb; margin-bottom: 8px; line-height: 1.5; 
-            background: #2b2b2b; padding: 10px; border-radius: 4px; border: 1px solid #444;
+            font-size: 11px; color: #bbb; margin-bottom: 6px; line-height: 1.4; 
+            background: #2b2b2b; padding: 8px; border-radius: 4px; border: 1px solid #444;
         }
         .cmd-block {
             background: #000; color: #ce9178; padding: 4px 8px; border-radius: 3px; font-family: monospace; display: block; margin-top: 5px; font-weight: bold; border: 1px solid #444;
@@ -61,14 +61,14 @@
 
         textarea#inputData {
             background: #111; color: #9cdcfe; border: 1px solid var(--border);
-            padding: 10px; height: 70px; min-height: 70px; 
+            padding: 8px; height: 60px; min-height: 60px; 
             font-family: monospace; font-size: 11px;
             white-space: pre; resize: vertical; width: 100%; box-sizing: border-box;
         }
         
         button.btn-action {
-            background: #007acc; color: white; border: none; padding: 10px;
-            cursor: pointer; font-weight: bold; border-radius: 2px; font-size: 13px; width: 100%;
+            background: #007acc; color: white; border: none; padding: 8px;
+            cursor: pointer; font-weight: bold; border-radius: 2px; font-size: 12px; width: 100%;
         }
         button.btn-action:hover { background: #0062a3; }
         
@@ -197,11 +197,11 @@
 
         /* Content wrapper */
         .content-wrapper {
-            padding: 40px;
+            padding: 30px;
             flex-grow: 1;
             display: flex;
             flex-direction: column;
-            gap: 60px;
+            gap: 40px;
         }
         
         .map-section { width: 100%; }
@@ -213,22 +213,22 @@
         .instance-tag { background: #333; padding: 2px 8px; border-radius: 4px; font-size: 12px; color: #aaa; font-weight: normal; }
 
         /* --- Hierarchy --- */
-        .hierarchy-box { margin-bottom: 20px; border-radius: 6px; position: relative; }
+        .hierarchy-box { margin-bottom: 15px; border-radius: 4px; position: relative; }
         .box-label {
-            position: absolute; top: -11px; left: 15px; padding: 0 8px; font-size: 13px; font-weight: bold;
+            position: absolute; top: -10px; left: 15px; padding: 0 6px; font-size: 11px; font-weight: bold;
             cursor: pointer; border-radius: 2px; z-index: 5; transition: all 0.2s;
         }
-        .socket-box { border: 2px solid var(--socket-border); padding: 30px 20px 20px 20px; margin-bottom: 0; }
-        .socket-label { background: var(--bg); color: var(--socket-border); border: 1px solid var(--socket-border); font-size: 14px; }
+        .socket-box { border: 1px solid var(--socket-border); padding: 25px 15px 15px 15px; margin-bottom: 0; }
+        .socket-label { background: var(--bg); color: var(--socket-border); border: 1px solid var(--socket-border); font-size: 12px; }
 
         .numa-box { 
-            border: 2px solid var(--numa-border); padding: 30px 20px 20px 20px; 
-            display: flex; flex-wrap: wrap; gap: 30px; background: rgba(197, 134, 192, 0.03); 
+            border: 1px solid var(--numa-border); padding: 25px 15px 15px 15px; 
+            display: flex; flex-wrap: wrap; gap: 20px; background: rgba(197, 134, 192, 0.02); 
         }
         .numa-label { background: var(--bg); color: var(--numa-border); border: 1px solid var(--numa-border); }
 
         .numa-box.is-network-node {
-            border: 3px solid var(--net-numa-border); background: rgba(0, 188, 242, 0.1); box-shadow: 0 0 20px rgba(0, 188, 242, 0.2); 
+            border: 2px solid var(--net-numa-border); background: rgba(0, 188, 242, 0.08); box-shadow: 0 0 15px rgba(0, 188, 242, 0.15); 
         }
         .numa-box.is-network-node .numa-label {
             color: var(--net-numa-border); border-color: var(--net-numa-border); background: #181818; font-weight: 900;
@@ -236,19 +236,20 @@
 
         .nic-badge {
             display: inline-block; background: var(--net-badge-bg); color: var(--net-badge-text);
-            font-size: 12px; padding: 4px 10px; border-radius: 4px; margin-left: 10px;
-            position: absolute; top: -14px; right: 20px; font-weight: bold;
-            box-shadow: 0 0 10px rgba(0,120,212, 0.6); animation: pulse 2s infinite; z-index: 6;
+            font-size: 10px; padding: 3px 8px; border-radius: 3px; margin-left: 10px;
+            position: absolute; top: -12px; right: 20px; font-weight: bold;
+            box-shadow: 0 0 8px rgba(0,120,212, 0.5); animation: pulse 2s infinite; z-index: 6;
         }
         @keyframes pulse { 0% { opacity: 0.8; } 50% { opacity: 1; text-shadow: 0 0 5px white; } 100% { opacity: 0.8; } }
 
         .l3-box {
             border: 1px dashed var(--l3-border); background: var(--l3-bg);
-            padding: 35px 12px 12px 12px; display: flex; flex-wrap: wrap; gap: 8px; width: var(--l3-width); align-content: flex-start;
+            padding: 30px 10px 10px 10px; display: flex; flex-wrap: wrap; gap: 6px; width: var(--l3-width); align-content: flex-start;
         }
         .l3-label { 
-            top: -12px; left: 50%; transform: translateX(-50%);
+            top: -10px; left: 50%; transform: translateX(-50%);
             background: var(--bg); color: var(--l3-border); border: 1px solid var(--l3-border); white-space: nowrap;
+            font-size: 10px;
         }
 
         /* --- CORE STYLES --- */
@@ -676,7 +677,58 @@
                          if (!instances[currentInstance]) instances[currentInstance] = {};
                     } else if (name === 'Overview') {
                         currentInstance = 'Physical'; 
+                    } else if (name === 'Cpus') {
+                        currentInstance = 'Physical'; // Parse cpus overview section
                     }
+                }
+
+                // Parse lines like: {'cpu_id': 14, 'isolated': True, 'net_cpu': ['net0']}
+                const cpuDictMatch = line.match(/'cpu_id':\s*(\d+)/);
+                if (cpuDictMatch) {
+                    const cpuId = cpuDictMatch[1];
+                    
+                    // Check for net_cpu assignment
+                    if (line.includes("'net_cpu':")) {
+                        addTag('Physical', cpuId, 'net_irq');
+                        
+                        // Detect NUMA node from this core
+                        const n = coreNumaMap[cpuId];
+                        if (n !== undefined) {
+                            netNumaNodes.add(n.toString());
+                        }
+                    }
+                    
+                    // Check for isolated flag
+                    if (line.includes("'isolated': True")) {
+                        isolatedCores.add(cpuId);
+                    }
+                    
+                    // Parse instance-specific roles from the cpu_id line
+                    // Example: {'cpu_id': 2, 'isolated': True, 'TrashCPU': ['HUB7'], 'ClickHouseCores': ['HUB7']}
+                    const rolePatterns = [
+                        { pattern: /'TrashCPU':\s*\[([^\]]+)\]/, roleId: 'trash' },
+                        { pattern: /'ClickHouseCores':\s*\[([^\]]+)\]/, roleId: 'click' },
+                        { pattern: /'UdpSendCores':\s*\[([^\]]+)\]/, roleId: 'udp' },
+                        { pattern: /'UdpReceiveCores':\s*\[([^\]]+)\]/, roleId: 'udp' },
+                        { pattern: /'GatewaysDefault':\s*\[([^\]]+)\]/, roleId: 'gateway' },
+                        { pattern: /'RobotsDefault':\s*\[([^\]]+)\]/, roleId: 'robot' },
+                        { pattern: /'AllRobotsThCPU':\s*\[([^\]]+)\]/, roleId: 'ar' },
+                        { pattern: /'RemoteFormulaCPU':\s*\[([^\]]+)\]/, roleId: 'rf' },
+                        { pattern: /'Formula':\s*\[([^\]]+)\]/, roleId: 'formula' }
+                    ];
+                    
+                    rolePatterns.forEach(({pattern, roleId}) => {
+                        const match = line.match(pattern);
+                        if (match) {
+                            // Extract instance names from the list
+                            const instancesStr = match[1];
+                            const instanceNames = instancesStr.split(',').map(s => s.trim().replace(/['"]/g, ''));
+                            instanceNames.forEach(instName => {
+                                if (!instances[instName]) instances[instName] = {};
+                                addTag(instName, cpuId, roleId);
+                            });
+                        }
+                    });
                 }
 
                 const dictMatch = line.match(/'(\w+)':\s*\[([\d,\s]+)\]/);
@@ -850,25 +902,66 @@
         if (!el) return;
         const tags = instances[instanceName]?.[cpu] || new Set();
         
-        // Reset classes
+        // Reset classes and styles
         el.className = 'core';
+        el.style.background = ''; // Reset background
+        el.style.opacity = '1'; // Reset opacity
 
-        // 1. Role Styling
+        // 1. Apply Role Color to Background
         if (tags.size > 0) {
-            if(tags.size === 1) {
-                const r = ROLES.find(x=>x.id === [...tags][0]);
-                el.style.borderColor = r ? r.color : '#fff';
-            } else {
+            // Get the primary role color
+            const primaryRole = ROLES.find(x => x.id === [...tags][0]);
+            if (primaryRole) {
+                // Apply role color with some transparency for layering
+                el.style.background = `linear-gradient(135deg, ${primaryRole.color}22 0%, ${primaryRole.color}44 100%)`;
+                el.style.borderColor = primaryRole.color;
+                el.style.borderWidth = '2px';
+            }
+            
+            // If multiple roles, add a gradient or indicator
+            if (tags.size > 1) {
+                const colors = Array.from(tags).map(tid => {
+                    const r = ROLES.find(x => x.id === tid);
+                    return r ? r.color : '#fff';
+                });
+                // Create a multi-color gradient for multiple roles
+                const gradient = colors.map((c, i) => {
+                    const start = (i / colors.length) * 100;
+                    const end = ((i + 1) / colors.length) * 100;
+                    return `${c}33 ${start}%, ${c}55 ${end}%`;
+                }).join(', ');
+                el.style.background = `linear-gradient(135deg, ${gradient})`;
                 el.style.borderColor = '#fff';
+                el.style.borderWidth = '2px';
             }
         } else {
+            // Check if core is used by other instances (ghost mode)
             const allKeys = Object.keys(instances).filter(k => k !== instanceName);
             let isGhost = false;
+            let ghostRoles = [];
+            
             for(const other of allKeys) {
-                if(instances[other]?.[cpu]?.size > 0) { isGhost = true; break; }
+                if(instances[other]?.[cpu]?.size > 0) { 
+                    isGhost = true;
+                    ghostRoles.push(...Array.from(instances[other][cpu]));
+                }
             }
-            if (isGhost) el.classList.add('is-ghost');
-            else { el.classList.add('is-isolated'); el.style.border = '1px solid #555'; }
+            
+            if (isGhost) {
+                el.classList.add('is-ghost');
+                // Show ghost role color with low opacity
+                if (ghostRoles.length > 0) {
+                    const ghostRole = ROLES.find(x => x.id === ghostRoles[0]);
+                    if (ghostRole) {
+                        el.style.background = `linear-gradient(135deg, ${ghostRole.color}11 0%, ${ghostRole.color}22 100%)`;
+                        el.style.borderColor = ghostRole.color;
+                        el.style.opacity = '0.4';
+                    }
+                }
+            } else {
+                el.classList.add('is-isolated'); 
+                el.style.border = '1px solid #555';
+            }
         }
 
         // 2. Load Bar rendering
@@ -1003,19 +1096,32 @@
 
         const instKeys = Object.keys(instances).filter(k => k !== 'Physical').sort();
         
-        // Render only the unified Physical layer with instance overlays
+        // If there are no instances, show Physical layer only
+        if (instKeys.length === 0) {
+            renderInstancePanel('Physical', geom, contentWrapper, true);
+        } else {
+            // Render a panel for each bender instance
+            instKeys.forEach(instName => {
+                renderInstancePanel(instName, geom, contentWrapper, false);
+            });
+        }
+        
+        updateStats();
+        calculateSizing();
+    }
+    
+    function renderInstancePanel(instanceName, geom, container, isPhysicalOnly) {
         const section = document.createElement('div');
         section.className = 'map-section';
         
         const title = document.createElement('div');
         title.className = 'map-title';
         
-        // Build title with instance tags if any
-        let titleHtml = '<span>CPU Topology';
-        if (instKeys.length > 0) {
-            titleHtml += ' (Instances: ' + instKeys.join(', ') + ')';
+        // Build title
+        let titleHtml = `<span>Instance: ${instanceName}</span>`;
+        if (isPhysicalOnly) {
+            titleHtml = '<span>CPU Topology (Physical View)</span>';
         }
-        titleHtml += '</span>';
         title.innerHTML = titleHtml;
         section.appendChild(title);
 
@@ -1069,21 +1175,21 @@
                     geom[s][n][c].forEach(cpu => {
                         const cell = document.createElement('div');
                         cell.className = 'core is-isolated';
-                        cell.id = `core-Physical-${cpu}`; 
+                        cell.id = `core-${instanceName}-${cpu}`; 
                         cell.dataset.cpu = cpu;
                         cell.setAttribute('draggable', 'false'); 
                         
                         cell.onmousedown = (e) => {
                             isMouseDown = true;
                             const isEraser = e.ctrlKey || e.metaKey;
-                            applyTool('Physical', cpu, false, isEraser); 
+                            applyTool(instanceName, cpu, false, isEraser); 
                         };
                         cell.onmouseenter = (e) => {
                             if(isMouseDown) {
                                 const isEraser = e.ctrlKey || e.metaKey;
-                                applyTool('Physical', cpu, true, isEraser);
+                                applyTool(instanceName, cpu, true, isEraser);
                             }
-                            showTooltip(e, 'Physical', cpu);
+                            showTooltip(e, instanceName, cpu);
                         };
                         cell.onmousemove = moveTooltip;
                         cell.onmouseleave = hideTooltip;
@@ -1097,15 +1203,20 @@
             });
             section.appendChild(sBox);
         });
-        contentWrapper.appendChild(section);
+        container.appendChild(section);
 
-        // Update visuals for all cores including instance overlays
-        if(instances['Physical']) {
-            Object.keys(instances['Physical']).forEach(cpu => updateCoreVisual('Physical', cpu));
-        }
+        // Update visuals for all cores in this instance
+        // Get all CPU IDs from geometry
+        const allCpus = [];
+        Object.keys(geom).forEach(s => {
+            Object.keys(geom[s]).forEach(n => {
+                Object.keys(geom[s][n]).forEach(c => {
+                    allCpus.push(...geom[s][n][c]);
+                });
+            });
+        });
         
-        updateStats();
-        calculateSizing();
+        allCpus.forEach(cpu => updateCoreVisual(instanceName, cpu));
     }
 
     // --- SIZING CALCULATOR ---
