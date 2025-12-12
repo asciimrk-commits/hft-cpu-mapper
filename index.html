@@ -113,11 +113,95 @@
 
         /* --- Canvas --- */
         .main-view {
-            flex-grow: 1; overflow-y: auto; padding: 40px;
+            flex-grow: 1; overflow-y: auto; padding: 0;
             background-color: #181818;
             background-image: radial-gradient(#2a2a2a 1px, transparent 1px);
             background-size: 20px 20px;
-            display: flex; flex-direction: column; align-items: flex-start; gap: 60px;
+            display: flex; flex-direction: column; align-items: stretch;
+        }
+
+        /* Header */
+        .page-header {
+            background: linear-gradient(135deg, #1e1e1e 0%, #2d2d30 100%);
+            border-bottom: 2px solid #007acc;
+            padding: 20px 40px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            position: sticky; top: 0; z-index: 100;
+        }
+        .page-header h1 {
+            margin: 0 0 5px 0;
+            font-size: 24px;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .header-badge {
+            font-size: 12px;
+            background: #007acc;
+            padding: 4px 10px;
+            border-radius: 3px;
+            font-weight: normal;
+        }
+        .page-header .subtitle {
+            font-size: 13px;
+            color: #888;
+            margin: 0;
+        }
+
+        /* Dashboard */
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            padding: 20px 40px;
+            background: #1e1e1e;
+            border-bottom: 1px solid #333;
+        }
+        .dashboard-card {
+            background: #2d2d30;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #444;
+            transition: all 0.2s;
+        }
+        .dashboard-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            border-color: #007acc;
+        }
+        .dashboard-card-label {
+            font-size: 11px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+        .dashboard-card-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 5px;
+        }
+        .dashboard-card-info {
+            font-size: 11px;
+            color: #aaa;
+        }
+        .dashboard-card.highlight {
+            border: 2px solid #00bcf2;
+            background: rgba(0, 188, 242, 0.1);
+        }
+        .dashboard-card.highlight .dashboard-card-value {
+            color: #00bcf2;
+        }
+
+        /* Content wrapper */
+        .content-wrapper {
+            padding: 40px;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 60px;
         }
         
         .map-section { width: 100%; }
@@ -193,6 +277,14 @@
         }
         .load-text {
             position: absolute; bottom: 12px; font-size: 10px; color: #aaa; width: 100%; text-align: center;
+        }
+
+        /* IRQ Badge on Core */
+        .irq-badge {
+            position: absolute; top: 2px; right: 2px;
+            background: #d500f9; color: #fff; font-size: 8px; font-weight: bold;
+            padding: 1px 3px; border-radius: 2px; z-index: 5;
+            box-shadow: 0 0 4px rgba(213, 0, 249, 0.8);
         }
 
         /* Tooltip */
@@ -279,8 +371,51 @@
 </div>
 
 <div class="main-view" id="canvas">
-    <div style="color:#555; margin-top:100px; text-align:center; font-size:1.4em;">
-        &larr; Жду данные...
+    <div class="page-header" id="page-header" style="display:none;">
+        <h1>
+            <span id="header-title">HFT CPU Mapper</span>
+            <span class="header-badge" id="header-badge">v3.0</span>
+        </h1>
+        <p class="subtitle" id="header-subtitle">Waiting for data...</p>
+    </div>
+    
+    <div class="dashboard" id="dashboard" style="display:none;">
+        <div class="dashboard-card">
+            <div class="dashboard-card-label">Total Cores</div>
+            <div class="dashboard-card-value" id="dash-total-cores">-</div>
+            <div class="dashboard-card-info">Physical CPUs</div>
+        </div>
+        <div class="dashboard-card">
+            <div class="dashboard-card-label">Used Cores</div>
+            <div class="dashboard-card-value" id="dash-used-cores">-</div>
+            <div class="dashboard-card-info">Allocated to roles</div>
+        </div>
+        <div class="dashboard-card">
+            <div class="dashboard-card-label">Free Cores</div>
+            <div class="dashboard-card-value" id="dash-free-cores">-</div>
+            <div class="dashboard-card-info">Available</div>
+        </div>
+        <div class="dashboard-card highlight" id="dash-network-card">
+            <div class="dashboard-card-label">Network NUMA</div>
+            <div class="dashboard-card-value" id="dash-network-numa">-</div>
+            <div class="dashboard-card-info" id="dash-network-info">Not detected</div>
+        </div>
+        <div class="dashboard-card">
+            <div class="dashboard-card-label">Isolated Cores</div>
+            <div class="dashboard-card-value" id="dash-isolated-cores">-</div>
+            <div class="dashboard-card-info">System isolated</div>
+        </div>
+        <div class="dashboard-card">
+            <div class="dashboard-card-label">Avg Load</div>
+            <div class="dashboard-card-value" id="dash-avg-load">-</div>
+            <div class="dashboard-card-info">Across all cores</div>
+        </div>
+    </div>
+    
+    <div class="content-wrapper" id="content-wrapper">
+        <div style="color:#555; margin-top:100px; text-align:center; font-size:1.4em;">
+            &larr; Жду данные...
+        </div>
     </div>
 </div>
 
@@ -312,6 +447,8 @@
     const tooltipEl = document.getElementById('tooltip');
     let numaDistances = {}; // NUMA distance matrix: {node: {otherNode: distance}}
     let isolatedCores = new Set(); // Set of isolated core IDs
+    let coreIRQMap = {}; // { '0': ['123', '124'], '1': ['125'] } - IRQ numbers per core
+    let networkInterfaces = []; // Array of {name, numaNode, irqs: [{irq, cpus}]}
 
     document.addEventListener('mouseup', () => { isMouseDown = false; });
     
@@ -362,11 +499,14 @@
         cpuLoadMap = {}; // Reset Load
         numaDistances = {}; // Reset NUMA distances
         isolatedCores = new Set(); // Reset isolated cores
+        coreIRQMap = {}; // Reset IRQ map
+        networkInterfaces = []; // Reset network interfaces
 
         const lines = text.split('\n');
         let mode = 'none'; 
         let currentInstance = null; 
         let ignoreNetSection = false;
+        let currentInterface = null; // Track current network interface being parsed
 
         for (let line of lines) {
             line = line.trim();
@@ -443,12 +583,49 @@
 
             // --- 4. NETWORK ---
             if (mode === 'network') {
-                // Parse new network format with NUMA Node
-                if (line.startsWith('NUMA Node:')) {
-                    const numaMatch = line.match(/NUMA Node:\s*(\d+)/);
+                // Parse new network format
+                if (line.startsWith('Interface:')) {
+                    const ifaceMatch = line.match(/Interface:\s*(\S+)/);
+                    if (ifaceMatch) {
+                        currentInterface = {
+                            name: ifaceMatch[1],
+                            numaNode: null,
+                            irqs: []
+                        };
+                        networkInterfaces.push(currentInterface);
+                    }
+                }
+                
+                if (currentInterface && line.startsWith('NUMA Node:')) {
+                    const numaMatch = line.match(/NUMA Node:\s*(-?\d+)/);
                     if (numaMatch) {
                         const node = numaMatch[1];
-                        netNumaNodes.add(node);
+                        currentInterface.numaNode = node;
+                        if (node !== '-1') {
+                            netNumaNodes.add(node);
+                        }
+                    }
+                }
+                
+                if (currentInterface) {
+                    const irqMatch = line.match(/^\s*IRQ\s+(\d+):\s*([\d,\s-]+)/);
+                    if (irqMatch) {
+                        const irqNum = irqMatch[1];
+                        const cpuList = irqMatch[2].trim();
+                        const cores = parseRangeStr(cpuList);
+                        
+                        currentInterface.irqs.push({
+                            irq: irqNum,
+                            cpus: cores
+                        });
+                        
+                        // Mark these cores as IRQ handlers
+                        cores.forEach(c => {
+                            const cStr = c.toString();
+                            addTag('Physical', cStr, 'net_irq');
+                            if (!coreIRQMap[cStr]) coreIRQMap[cStr] = [];
+                            coreIRQMap[cStr].push(irqNum);
+                        });
                     }
                 }
                 
@@ -468,7 +645,7 @@
                             for(const [n, count] of Object.entries(nodeCounts)) {
                                 if(count > maxCount) { maxCount = count; maxNode = n; }
                             }
-                            if (maxNode !== -1) netNumaNodes.add(maxNode);
+                            if (maxNode !== -1) netNumaNodes.add(maxNode.toString());
                         } else {
                             if(!ignoreNetSection) cores.forEach(c => addTag('Physical', c.toString(), 'net_irq'));
                         }
@@ -564,6 +741,12 @@
             if(load > 50) color = '#ffeb3b';
             if(load > 80) color = '#f44336';
             html += `<div class="tooltip-load" style="color:${color}">Load: ${load}%</div>`;
+        }
+
+        // IRQ information
+        if (coreIRQMap[cpu] && coreIRQMap[cpu].length > 0) {
+            html += `<div style="margin-top:5px; border-top:1px dashed #444; padding-top:5px; font-size:11px; color:#d500f9;">`;
+            html += `<strong>IRQ:</strong> ${coreIRQMap[cpu].join(', ')}</div>`;
         }
 
         const tags = instances[instanceName]?.[cpu];
@@ -668,18 +851,92 @@
         if(load > 0) el.appendChild(loadText); // Show % text
         el.appendChild(barContainer); // Show bar
         el.appendChild(indicators);
+        
+        // 3. IRQ Badge
+        if (coreIRQMap[cpu] && coreIRQMap[cpu].length > 0) {
+            const irqBadge = document.createElement('div');
+            irqBadge.className = 'irq-badge';
+            irqBadge.innerText = 'IRQ';
+            irqBadge.title = `IRQs: ${coreIRQMap[cpu].join(', ')}`;
+            el.appendChild(irqBadge);
+        }
+    }
+
+    function updateDashboard() {
+        // Calculate metrics
+        const allCores = Object.keys(coreNumaMap);
+        const totalCores = allCores.length;
+        
+        // Count used cores (cores with any role assigned)
+        const physInstance = instances['Physical'];
+        let usedCores = 0;
+        if (physInstance) {
+            usedCores = Object.keys(physInstance).filter(cpu => 
+                physInstance[cpu] && physInstance[cpu].size > 0
+            ).length;
+        }
+        const freeCores = totalCores - usedCores;
+        
+        // Calculate average load
+        let totalLoad = 0;
+        let loadCount = 0;
+        allCores.forEach(cpu => {
+            const load = parseFloat(cpuLoadMap[cpu] || 0);
+            if (load > 0) {
+                totalLoad += load;
+                loadCount++;
+            }
+        });
+        const avgLoad = loadCount > 0 ? (totalLoad / loadCount).toFixed(1) : 0;
+        
+        // Update header
+        document.getElementById('page-header').style.display = 'block';
+        if (serverName) {
+            document.getElementById('header-title').innerText = `HFT CPU Mapper - ${serverName}`;
+            document.getElementById('header-subtitle').innerText = `Server: ${serverName}.qb.loc | Generated: ${new Date().toLocaleString()}`;
+        }
+        
+        // Update dashboard cards
+        document.getElementById('dashboard').style.display = 'grid';
+        document.getElementById('dash-total-cores').innerText = totalCores;
+        document.getElementById('dash-used-cores').innerText = usedCores;
+        document.getElementById('dash-free-cores').innerText = freeCores;
+        
+        // Network NUMA
+        if (netNumaNodes.size > 0) {
+            const nodes = Array.from(netNumaNodes).sort().join(', ');
+            document.getElementById('dash-network-numa').innerText = nodes;
+            const ifaces = networkInterfaces.map(iface => iface.name).join(', ');
+            document.getElementById('dash-network-info').innerText = ifaces || `Node ${nodes}`;
+        } else {
+            document.getElementById('dash-network-numa').innerText = 'N/A';
+            document.getElementById('dash-network-info').innerText = 'Not detected';
+        }
+        
+        // Isolated cores
+        document.getElementById('dash-isolated-cores').innerText = isolatedCores.size;
+        
+        // Average load with color
+        document.getElementById('dash-avg-load').innerText = avgLoad + '%';
+        const loadEl = document.getElementById('dash-avg-load');
+        if (avgLoad > 80) loadEl.style.color = '#f44336';
+        else if (avgLoad > 50) loadEl.style.color = '#ffeb3b';
+        else loadEl.style.color = '#4caf50';
     }
 
     function render() {
         const txt = document.getElementById('inputData').value;
         const geom = parse(txt); 
-        const cvs = document.getElementById('canvas');
-        cvs.innerHTML = '';
+        const contentWrapper = document.getElementById('content-wrapper');
+        contentWrapper.innerHTML = '';
 
         if(Object.keys(geom).length === 0) {
-            cvs.innerHTML = '<div style="color:#888;">Нет данных CPU.</div>';
+            contentWrapper.innerHTML = '<div style="color:#888;">Нет данных CPU.</div>';
             return;
         }
+
+        // Update dashboard
+        updateDashboard();
 
         const instKeys = Object.keys(instances).filter(k => k !== 'Physical').sort();
         const allKeys = ['Physical', ...instKeys];
@@ -771,7 +1028,7 @@
                 });
                 section.appendChild(sBox);
             });
-            cvs.appendChild(section);
+            contentWrapper.appendChild(section);
         });
 
         allKeys.forEach(inst => {
@@ -881,6 +1138,11 @@
         });
 
         document.getElementById('output').innerText = txt;
+        
+        // Update dashboard when stats change
+        if (Object.keys(globalGeometry).length > 0) {
+            updateDashboard();
+        }
     }
     
     function copyConfig() {
