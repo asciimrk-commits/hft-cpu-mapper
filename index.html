@@ -262,7 +262,10 @@
         .core.is-ghost {
             opacity: 0.5;
             background: repeating-linear-gradient(45deg, #2a2a2a, #2a2a2a 5px, #3a3a3a 5px, #3a3a3a 10px);
-            border: 1px dashed #666 !important; color: #777;
+            border-style: dashed;
+            border-width: 1px;
+            border-color: #666;
+            color: #777;
         }
         .core:hover { border-color: #fff; z-index: 100; box-shadow: 0 0 8px #fff; opacity: 1;}
         .core-num { font-size: var(--core-font); font-weight: bold; color: #ddd; z-index: 2; text-shadow: 0 1px 3px black;}
@@ -1056,17 +1059,21 @@
         const instKeys = Object.keys(instances).filter(k => k !== 'Physical').sort();
         
         // Get all CPU IDs from geometry (for rendering all cores in each instance view)
-        const allCpus = [];
+        const allCpusSet = new Set();
         Object.keys(geom).forEach(s => {
             Object.keys(geom[s]).forEach(n => {
                 Object.keys(geom[s][n]).forEach(c => {
                     geom[s][n][c].forEach(cpu => {
-                        if (!allCpus.includes(cpu)) allCpus.push(cpu);
+                        allCpusSet.add(cpu);
                     });
                 });
             });
         });
-        allCpus.sort((a, b) => parseInt(a) - parseInt(b));
+        const allCpus = Array.from(allCpusSet).sort((a, b) => {
+            const numA = parseInt(a, 10);
+            const numB = parseInt(b, 10);
+            return numA - numB;
+        });
 
         // Render a section for each bender instance (NOT Physical layer)
         instKeys.forEach(instName => {
