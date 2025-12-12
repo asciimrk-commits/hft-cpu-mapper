@@ -606,7 +606,7 @@
             // --- 4. NETWORK ---
             if (mode === 'network') {
                 // Parse new network format
-                if (line.startsWith('Interface:')) {
+                if (line.includes('Interface:')) {
                     const ifaceMatch = line.match(/Interface:\s*(\S+)/);
                     if (ifaceMatch) {
                         currentInterface = {
@@ -630,7 +630,8 @@
                 }
                 
                 if (currentInterface) {
-                    const irqMatch = line.match(/^\s*IRQ\s+(\d+):\s*([\d,\s-]+)/);
+                    // Match: "  IRQ 123: CPUs [2]" or "  IRQ 123: 2" or "  IRQ 123: CPUs [2,3]"
+                    const irqMatch = line.match(/IRQ\s+(\d+):\s+(?:CPUs\s+\[)?([\d,\s-]+)\]?/);
                     if (irqMatch) {
                         const irqNum = irqMatch[1];
                         const cpuList = irqMatch[2].trim();
