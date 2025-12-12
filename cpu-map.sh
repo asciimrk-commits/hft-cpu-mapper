@@ -76,7 +76,9 @@ ssh -T -o BatchMode=yes -o ConnectTimeout=5 "$HOST" << EOF
     echo ">>> 4. NETWORK"
     
     # Собираем информацию по всем сетевым интерфейсам
-    for iface in \$(ls /sys/class/net/ 2>/dev/null | grep -E '^(eth|ens|enp)'); do
+    for iface_path in /sys/class/net/eth* /sys/class/net/ens* /sys/class/net/enp*; do
+        [ -e "\$iface_path" ] || continue
+        iface=\$(basename "\$iface_path")
         echo ""
         echo "Interface: \$iface"
         

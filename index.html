@@ -607,7 +607,7 @@
                     }
                 }
                 
-                if (currentInterface && line.match(/^\s*IRQ\s+(\d+):\s*([\d,\s-]+)/)) {
+                if (currentInterface) {
                     const irqMatch = line.match(/^\s*IRQ\s+(\d+):\s*([\d,\s-]+)/);
                     if (irqMatch) {
                         const irqNum = irqMatch[1];
