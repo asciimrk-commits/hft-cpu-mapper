@@ -266,7 +266,13 @@
             border: 1px dashed #666; color: #777;
         }
         .core:hover { border-color: #fff; z-index: 100; box-shadow: 0 0 8px #fff; opacity: 1;}
-        .core-num { font-size: var(--core-font); font-weight: bold; color: #ddd; z-index: 2; text-shadow: 0 1px 3px black;}
+        .core-num { 
+            font-size: var(--core-font); 
+            font-weight: bold; 
+            color: #fff; 
+            z-index: 2; 
+            text-shadow: 0 0 6px black, 1px 1px 2px black;
+        }
         
         /* LOAD BAR inside Core */
         .load-bar-container {
@@ -277,7 +283,8 @@
             height: 100%; width: 0%; transition: width 0.5s;
         }
         .load-text {
-            position: absolute; bottom: 12px; font-size: 10px; color: #aaa; width: 100%; text-align: center;
+            position: absolute; bottom: 12px; font-size: 10px; color: #fff; width: 100%; text-align: center;
+            text-shadow: 0 0 4px black, 1px 1px 2px black;
         }
 
         /* IRQ Badge on Core */
@@ -903,57 +910,65 @@
         el.style.background = ''; // Reset background
         el.style.opacity = '1'; // Reset opacity
 
-        // 1. Apply Role Color to Background
+        // 1. Apply Role Color to Background with FULL OPACITY for current instance
         if (tags.size > 0) {
             // Get the primary role color using ROLES_BY_ID for O(1) lookup
             const primaryRoleId = [...tags][0];
             const primaryRole = ROLES_BY_ID[primaryRoleId];
             if (primaryRole) {
-                // Apply role color with some transparency for layering
-                el.style.background = `linear-gradient(135deg, ${primaryRole.color}22 0%, ${primaryRole.color}44 100%)`;
+                // Apply SOLID background color (not just border)
+                el.style.background = primaryRole.color;
                 el.style.borderColor = primaryRole.color;
                 el.style.borderWidth = '2px';
             }
             
-            // If multiple roles, add a gradient or indicator
+            // If multiple roles, add a gradient
             if (tags.size > 1) {
                 const colors = Array.from(tags).map(tid => {
                     const r = ROLES_BY_ID[tid];
                     return r ? r.color : '#fff';
                 });
-                // Create a multi-color gradient for multiple roles
+                // Create a multi-color gradient for multiple roles with FULL opacity
                 const gradient = colors.map((c, i) => {
                     const start = (i / colors.length) * 100;
                     const end = ((i + 1) / colors.length) * 100;
-                    return `${c}33 ${start}%, ${c}55 ${end}%`;
+                    return `${c} ${start}%, ${c} ${end}%`;
                 }).join(', ');
                 el.style.background = `linear-gradient(135deg, ${gradient})`;
                 el.style.borderColor = '#fff';
                 el.style.borderWidth = '2px';
             }
         } else {
-            // Check if core is used by other instances (ghost mode)
-            const allKeys = Object.keys(instances).filter(k => k !== instanceName);
+            // Check if core is used by other instances (ghost mode) OR Physical layer
+            const physicalTags = instances['Physical']?.[cpu] || new Set();
+            const allKeys = Object.keys(instances).filter(k => k !== instanceName && k !== 'Physical');
             let ghostRole = null;
             
-            // Find first ghost role and break early
-            for(const other of allKeys) {
-                if(instances[other]?.[cpu]?.size > 0) {
-                    const ghostRoleId = [...instances[other][cpu]][0];
-                    ghostRole = ROLES_BY_ID[ghostRoleId];
-                    break; // Early exit once we find a ghost role
+            // First check Physical layer for system/network roles
+            if (physicalTags.size > 0) {
+                const physicalRoleId = [...physicalTags][0];
+                ghostRole = ROLES_BY_ID[physicalRoleId];
+            } else {
+                // Find first ghost role from other instances
+                for(const other of allKeys) {
+                    if(instances[other]?.[cpu]?.size > 0) {
+                        const ghostRoleId = [...instances[other][cpu]][0];
+                        ghostRole = ROLES_BY_ID[ghostRoleId];
+                        break; // Early exit once we find a ghost role
+                    }
                 }
             }
             
             if (ghostRole) {
                 el.classList.add('is-ghost');
-                // Show ghost role color with low opacity
-                el.style.background = `linear-gradient(135deg, ${ghostRole.color}11 0%, ${ghostRole.color}22 100%)`;
+                // Show ghost role color with SEMI-TRANSPARENT background
+                el.style.background = ghostRole.color;
                 el.style.borderColor = ghostRole.color;
-                el.style.opacity = '0.4';
+                el.style.opacity = '0.35'; // Semi-transparent for cores not in current instance
             } else {
                 el.classList.add('is-isolated'); 
                 el.style.border = '1px solid #555';
+                el.style.opacity = '0.35'; // Semi-transparent for unused cores
             }
         }
 
