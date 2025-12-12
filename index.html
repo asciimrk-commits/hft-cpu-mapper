@@ -262,10 +262,19 @@
         .core.is-ghost {
             opacity: 0.5;
             background: repeating-linear-gradient(45deg, #2a2a2a, #2a2a2a 5px, #3a3a3a 5px, #3a3a3a 10px);
-            border: 1px dashed #666; color: #777;
+            border: 1px dashed #666 !important; color: #777;
         }
         .core:hover { border-color: #fff; z-index: 100; box-shadow: 0 0 8px #fff; opacity: 1;}
         .core-num { font-size: var(--core-font); font-weight: bold; color: #ddd; z-index: 2; text-shadow: 0 1px 3px black;}
+        
+        /* Role Indicators (colored bars at bottom of core) */
+        .indicators {
+            position: absolute; bottom: 0; left: 0; right: 0; height: 4px;
+            display: flex; gap: 1px;
+        }
+        .ind-bar {
+            flex: 1; height: 100%;
+        }
         
         /* LOAD BAR inside Core */
         .load-bar-container {
@@ -848,27 +857,59 @@
     function updateCoreVisual(instanceName, cpu) {
         const el = document.getElementById(`core-${instanceName}-${cpu}`);
         if (!el) return;
+        
+        // Get tags for this instance and this core
         const tags = instances[instanceName]?.[cpu] || new Set();
+        
+        // Check if this core belongs to other instances or Physical layer
+        const physTags = instances['Physical']?.[cpu] || new Set();
+        const otherInstanceKeys = Object.keys(instances).filter(k => k !== instanceName && k !== 'Physical');
+        let belongsToOtherInstance = false;
+        for (const other of otherInstanceKeys) {
+            if (instances[other]?.[cpu]?.size > 0) {
+                belongsToOtherInstance = true;
+                break;
+            }
+        }
+        
+        // Determine if this core should be a ghost
+        const isGhost = tags.size === 0 && (physTags.size > 0 || belongsToOtherInstance);
         
         // Reset classes
         el.className = 'core';
-
-        // 1. Role Styling
-        if (tags.size > 0) {
-            if(tags.size === 1) {
-                const r = ROLES.find(x=>x.id === [...tags][0]);
-                el.style.borderColor = r ? r.color : '#fff';
+        el.style.borderColor = '';
+        el.style.borderWidth = '';
+        el.style.borderStyle = '';
+        el.style.backgroundColor = '';
+        
+        if (isGhost) {
+            // Ghost core - semi-transparent with dashed border
+            el.classList.add('is-ghost');
+        } else if (tags.size > 0) {
+            // Core has roles in this instance - color it
+            if (tags.size === 1) {
+                // Single role - use solid colored border
+                const roleId = [...tags][0];
+                const role = ROLES.find(x => x.id === roleId);
+                if (role) {
+                    el.style.borderColor = role.color;
+                    el.style.borderWidth = '2px';
+                    el.style.borderStyle = 'solid';
+                    // Add subtle background tint
+                    const rgb = hexToRgb(role.color);
+                    if (rgb) {
+                        el.style.backgroundColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.15)`;
+                    }
+                }
             } else {
+                // Multiple roles - use white border and show role indicators
                 el.style.borderColor = '#fff';
+                el.style.borderWidth = '2px';
+                el.style.borderStyle = 'solid';
             }
         } else {
-            const allKeys = Object.keys(instances).filter(k => k !== instanceName);
-            let isGhost = false;
-            for(const other of allKeys) {
-                if(instances[other]?.[cpu]?.size > 0) { isGhost = true; break; }
-            }
-            if (isGhost) el.classList.add('is-ghost');
-            else { el.classList.add('is-isolated'); el.style.border = '1px solid #555'; }
+            // Empty core - no assignments
+            el.classList.add('is-isolated');
         }
 
         // 2. Load Bar rendering
@@ -894,10 +935,10 @@
         loadText.className = 'load-text';
         loadText.innerText = load > 0 ? Math.round(load) + '%' : '';
 
-        // Role Indicators (dots at bottom)
+        // Role Indicators (colored dots/bars at bottom for multi-role cores)
         const indicators = document.createElement('div');
         indicators.className = 'indicators';
-        if (tags.size > 0) {
+        if (tags.size > 1) {
             tags.forEach(roleId => {
                 const role = ROLES.find(r => r.id === roleId);
                 if (role) {
@@ -913,7 +954,7 @@
         el.appendChild(textDiv);
         if(load > 0) el.appendChild(loadText); // Show % text
         el.appendChild(barContainer); // Show bar
-        el.appendChild(indicators);
+        if (tags.size > 1) el.appendChild(indicators); // Show indicators only for multi-role
         
         // 3. IRQ Badge
         if (coreIRQMap[cpu] && coreIRQMap[cpu].length > 0) {
@@ -923,6 +964,16 @@
             irqBadge.title = `IRQs: ${coreIRQMap[cpu].join(', ')}`;
             el.appendChild(irqBadge);
         }
+    }
+    
+    // Helper function to convert hex color to RGB
+    function hexToRgb(hex) {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16)
+        } : null;
     }
 
     function updateDashboard() {
@@ -1001,108 +1052,118 @@
         // Update dashboard
         updateDashboard();
 
+        // Get all instance names except 'Physical'
         const instKeys = Object.keys(instances).filter(k => k !== 'Physical').sort();
         
-        // Render only the unified Physical layer with instance overlays
-        const section = document.createElement('div');
-        section.className = 'map-section';
-        
-        const title = document.createElement('div');
-        title.className = 'map-title';
-        
-        // Build title with instance tags if any
-        let titleHtml = '<span>CPU Topology';
-        if (instKeys.length > 0) {
-            titleHtml += ' (Instances: ' + instKeys.join(', ') + ')';
-        }
-        titleHtml += '</span>';
-        title.innerHTML = titleHtml;
-        section.appendChild(title);
-
-        Object.keys(geom).sort((a,b)=>a-b).forEach(s => {
-            const sBox = document.createElement('div');
-            sBox.className = 'hierarchy-box socket-box';
-            sBox.innerHTML = `<div class="box-label socket-label">SOCKET ${s}</div>`;
-
-            Object.keys(geom[s]).sort((a,b)=>a-b).forEach(n => {
-                const nBox = document.createElement('div');
-                let isNet = netNumaNodes.has(n);
-                nBox.className = 'hierarchy-box numa-box' + (isNet ? ' is-network-node' : '');
-                
-                // Build NUMA label with tier information
-                let numaLabelText = `NUMA ${n}`;
-                let numaLabelStyle = '';
-                
-                // Calculate tier if network node is known and distance data exists
-                if (netNumaNodes.size > 0 && Object.keys(numaDistances).length > 0) {
-                    const netNode = Array.from(netNumaNodes)[0]; // Use first network node as reference
-                    if (numaDistances[netNode] && numaDistances[netNode][n] !== undefined) {
-                        const distance = numaDistances[netNode][n];
-                        let tierColor = '#666'; // Gray - Remote
-                        let tierName = 'Remote';
-                        
-                        if (distance <= 10) {
-                            tierColor = '#ffd700'; // Gold - Same NUMA
-                            tierName = 'Same NUMA';
-                        } else if (distance <= 21) {
-                            tierColor = '#c0c0c0'; // Silver - Same Socket
-                            tierName = 'Same Socket';
-                        } else if (distance <= 31) {
-                            tierColor = '#cd7f32'; // Bronze - Cross Socket
-                            tierName = 'Cross Socket';
-                        }
-                        
-                        numaLabelStyle = `background-color: ${tierColor}; color: #000; font-weight: bold;`;
-                        numaLabelText += ` [${tierName}]`;
-                    }
-                }
-                
-                let numaHeaderHtml = `<div class="box-label numa-label" style="${numaLabelStyle}">${numaLabelText}</div>`;
-                if (isNet) numaHeaderHtml += `<div class="nic-badge" title="Network Attached">NETWORK NODE</div>`;
-                nBox.innerHTML = numaHeaderHtml;
-
-                Object.keys(geom[s][n]).sort((a,b)=>parseInt(a)-parseInt(b)).forEach(c => {
-                    const l3Box = document.createElement('div');
-                    l3Box.className = 'hierarchy-box l3-box';
-                    l3Box.innerHTML = `<div class="box-label l3-label">L3 #${c}</div>`;
-
+        // Get all CPU IDs from geometry (for rendering all cores in each instance view)
+        const allCpus = [];
+        Object.keys(geom).forEach(s => {
+            Object.keys(geom[s]).forEach(n => {
+                Object.keys(geom[s][n]).forEach(c => {
                     geom[s][n][c].forEach(cpu => {
-                        const cell = document.createElement('div');
-                        cell.className = 'core is-isolated';
-                        cell.id = `core-Physical-${cpu}`; 
-                        cell.dataset.cpu = cpu;
-                        cell.setAttribute('draggable', 'false'); 
-                        
-                        cell.onmousedown = (e) => {
-                            isMouseDown = true;
-                            const isEraser = e.ctrlKey || e.metaKey;
-                            applyTool('Physical', cpu, false, isEraser); 
-                        };
-                        cell.onmouseenter = (e) => {
-                            if(isMouseDown) {
-                                const isEraser = e.ctrlKey || e.metaKey;
-                                applyTool('Physical', cpu, true, isEraser);
-                            }
-                            showTooltip(e, 'Physical', cpu);
-                        };
-                        cell.onmousemove = moveTooltip;
-                        cell.onmouseleave = hideTooltip;
-                        cell.ondragstart = () => false;
-
-                        l3Box.appendChild(cell);
+                        if (!allCpus.includes(cpu)) allCpus.push(cpu);
                     });
-                    nBox.appendChild(l3Box);
                 });
-                sBox.appendChild(nBox);
             });
-            section.appendChild(sBox);
         });
-        contentWrapper.appendChild(section);
+        allCpus.sort((a, b) => parseInt(a) - parseInt(b));
 
-        // Update visuals for all cores including instance overlays
-        if(instances['Physical']) {
-            Object.keys(instances['Physical']).forEach(cpu => updateCoreVisual('Physical', cpu));
-        }
+        // Render a section for each bender instance (NOT Physical layer)
+        instKeys.forEach(instName => {
+            const section = document.createElement('div');
+            section.className = 'map-section';
+            
+            const title = document.createElement('div');
+            title.className = 'map-title';
+            title.innerHTML = `<span>${instName}</span><span class="instance-tag">Bender Instance</span>`;
+            section.appendChild(title);
+
+            // Render socket/numa/l3 hierarchy
+            Object.keys(geom).sort((a,b)=>a-b).forEach(s => {
+                const sBox = document.createElement('div');
+                sBox.className = 'hierarchy-box socket-box';
+                sBox.innerHTML = `<div class="box-label socket-label">SOCKET ${s}</div>`;
+
+                Object.keys(geom[s]).sort((a,b)=>a-b).forEach(n => {
+                    const nBox = document.createElement('div');
+                    let isNet = netNumaNodes.has(n);
+                    nBox.className = 'hierarchy-box numa-box' + (isNet ? ' is-network-node' : '');
+                    
+                    // Build NUMA label with tier information
+                    let numaLabelText = `NUMA ${n}`;
+                    let numaLabelStyle = '';
+                    
+                    // Calculate tier if network node is known and distance data exists
+                    if (netNumaNodes.size > 0 && Object.keys(numaDistances).length > 0) {
+                        const netNode = Array.from(netNumaNodes)[0]; // Use first network node as reference
+                        if (numaDistances[netNode] && numaDistances[netNode][n] !== undefined) {
+                            const distance = numaDistances[netNode][n];
+                            let tierColor = '#666'; // Gray - Remote
+                            let tierName = 'Remote';
+                            
+                            if (distance <= 10) {
+                                tierColor = '#ffd700'; // Gold - Same NUMA
+                                tierName = 'Same NUMA';
+                            } else if (distance <= 21) {
+                                tierColor = '#c0c0c0'; // Silver - Same Socket
+                                tierName = 'Same Socket';
+                            } else if (distance <= 31) {
+                                tierColor = '#cd7f32'; // Bronze - Cross Socket
+                                tierName = 'Cross Socket';
+                            }
+                            
+                            numaLabelStyle = `background-color: ${tierColor}; color: #000; font-weight: bold;`;
+                            numaLabelText += ` [${tierName}]`;
+                        }
+                    }
+                    
+                    let numaHeaderHtml = `<div class="box-label numa-label" style="${numaLabelStyle}">${numaLabelText}</div>`;
+                    if (isNet) numaHeaderHtml += `<div class="nic-badge" title="Network Attached">NETWORK NODE</div>`;
+                    nBox.innerHTML = numaHeaderHtml;
+
+                    Object.keys(geom[s][n]).sort((a,b)=>parseInt(a)-parseInt(b)).forEach(c => {
+                        const l3Box = document.createElement('div');
+                        l3Box.className = 'hierarchy-box l3-box';
+                        l3Box.innerHTML = `<div class="box-label l3-label">L3 #${c}</div>`;
+
+                        // Render all cores in this L3 cache
+                        geom[s][n][c].forEach(cpu => {
+                            const cell = document.createElement('div');
+                            cell.className = 'core';
+                            cell.id = `core-${instName}-${cpu}`; 
+                            cell.dataset.cpu = cpu;
+                            cell.dataset.instance = instName;
+                            cell.setAttribute('draggable', 'false'); 
+                            
+                            cell.onmousedown = (e) => {
+                                isMouseDown = true;
+                                const isEraser = e.ctrlKey || e.metaKey;
+                                applyTool(instName, cpu, false, isEraser); 
+                            };
+                            cell.onmouseenter = (e) => {
+                                if(isMouseDown) {
+                                    const isEraser = e.ctrlKey || e.metaKey;
+                                    applyTool(instName, cpu, true, isEraser);
+                                }
+                                showTooltip(e, instName, cpu);
+                            };
+                            cell.onmousemove = moveTooltip;
+                            cell.onmouseleave = hideTooltip;
+                            cell.ondragstart = () => false;
+
+                            l3Box.appendChild(cell);
+                        });
+                        nBox.appendChild(l3Box);
+                    });
+                    sBox.appendChild(nBox);
+                });
+                section.appendChild(sBox);
+            });
+            contentWrapper.appendChild(section);
+
+            // Update visuals for all cores in this instance
+            allCpus.forEach(cpu => updateCoreVisual(instName, cpu));
+        });
         
         updateStats();
         calculateSizing();
