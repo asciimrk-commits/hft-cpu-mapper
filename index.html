@@ -529,7 +529,10 @@
             if (mode === 'lscpu') {
                 if (line.startsWith('CPU') || line.startsWith('#')) continue;
                 
-                // Parse CSV format: CPU,NODE,SOCKET,CORE,CACHE,ONLINE
+                // Parse CSV format: CPU,NODE,SOCKET,CORE,CACHE,?,?,?,L3,ONLINE
+                // Format can vary:
+                // - Old: CPU,NODE,SOCKET,CORE,CACHE,ONLINE (6 cols, CACHE = "0:1:2:3")
+                // - New: CPU,NODE,SOCKET,CORE,CACHE,?,?,?,L3,ONLINE (10 cols, CACHE empty, L3 at index 8)
                 const parts = line.split(',');
                 if (parts.length < 6) continue;
                 
@@ -537,16 +540,26 @@
                 const node = parts[1].trim();
                 const socket = parts[2].trim();
                 const cacheStr = parts[4].trim();
-                const online = parts[5].trim();
+                
+                // Determine online status and L3 based on format
+                let online, l3id;
+                if (parts.length >= 10) {
+                    // New format: L3 at index 8, ONLINE at index 9
+                    l3id = parts[8].trim() || 'U';
+                    online = parts[9].trim();
+                } else {
+                    // Old format: ONLINE at index 5, parse L3 from CACHE
+                    online = parts[5].trim();
+                    l3id = 'U';
+                    if (cacheStr.includes(':')) {
+                        const cParts = cacheStr.split(':');
+                        if (cParts.length >= 4) l3id = cParts[3];
+                    }
+                }
                 
                 if (online === 'no' || node === '-' || socket === '-') continue;
 
                 coreNumaMap[cpu] = node;
-                let l3id = 'U';
-                if (cacheStr.includes(':')) {
-                    const cParts = cacheStr.split(':');
-                    if (cParts.length >= 4) l3id = cParts[3];
-                }
                 if(!globalGeometry[socket]) globalGeometry[socket] = {};
                 if(!globalGeometry[socket][node]) globalGeometry[socket][node] = {};
                 if(!globalGeometry[socket][node][l3id]) globalGeometry[socket][node][l3id] = [];
@@ -692,6 +705,44 @@
 
                 if (line.includes('topology information')) ignoreNetSection = true;
                 if (line.includes('Network interfaces cpus')) ignoreNetSection = false;
+                
+                // Parse network interface CPU assignments from bender-cpuinfo
+                // Format: "net0: 2-3"
+                if (!ignoreNetSection && line.match(/^(net\d+|eni\d+|eth\d+|ens\d+|enp\d+):\s*([\d,\s-]+)$/)) {
+                    const netMatch = line.match(/^([^:]+):\s*([\d,\s-]+)$/);
+                    if (netMatch) {
+                        const ifaceName = netMatch[1].trim();
+                        const rangeStr = netMatch[2].trim();
+                        const cores = parseRangeStr(rangeStr);
+                        
+                        // Mark cores as net_irq
+                        cores.forEach(c => {
+                            const cStr = c.toString();
+                            addTag('Physical', cStr, 'net_irq');
+                        });
+                        
+                        // Detect NUMA node from the cores
+                        if (cores.length > 0) {
+                            const nodeCounts = {};
+                            cores.forEach(c => {
+                                const n = coreNumaMap[c.toString()];
+                                if (n !== undefined) nodeCounts[n] = (nodeCounts[n] || 0) + 1;
+                            });
+                            // Use the NUMA node with most cores
+                            let maxNode = null; 
+                            let maxCount = 0;
+                            for (const [n, count] of Object.entries(nodeCounts)) {
+                                if (count > maxCount) { 
+                                    maxCount = count; 
+                                    maxNode = n; 
+                                }
+                            }
+                            if (maxNode !== null) {
+                                netNumaNodes.add(maxNode.toString());
+                            }
+                        }
+                    }
+                }
             }
 
             // --- 7. CPU LOAD (MPSTAT) ---
@@ -732,7 +783,7 @@
     }
 
     function showTooltip(e, instanceName, cpu) {
-        let html = `<div class="tooltip-header">Core ${cpu} (${instanceName}):</div>`;
+        let html = `<div class="tooltip-header">Core ${cpu}:</div>`;
         
         // Load
         const load = cpuLoadMap[cpu];
@@ -749,25 +800,37 @@
             html += `<strong>IRQ:</strong> ${coreIRQMap[cpu].join(', ')}</div>`;
         }
 
-        const tags = instances[instanceName]?.[cpu];
-        if (tags && tags.size > 0) {
-            tags.forEach(tid => {
+        // Physical roles
+        const physTags = instances['Physical']?.[cpu];
+        if (physTags && physTags.size > 0) {
+            html += `<div style="margin-top:5px; border-top:1px dashed #444; padding-top:5px;">`;
+            html += `<strong>Physical Roles:</strong>`;
+            physTags.forEach(tid => {
                  const r = ROLES.find(x => x.id === tid);
                  if(r) html += `<div class="tooltip-row"><div class="tooltip-swatch" style="background:${r.color}"></div>${r.name}</div>`;
             });
+            html += `</div>`;
         }
 
-        // Ghost
-        const allKeys = Object.keys(instances).filter(k => k !== instanceName);
-        let occupiedBy = [];
-        allKeys.forEach(otherInst => {
-            if (instances[otherInst]?.[cpu]?.size > 0) {
-                const roles = Array.from(instances[otherInst][cpu]).join(', ');
-                occupiedBy.push(`${otherInst} (${roles})`);
+        // Instance assignments
+        const instKeys = Object.keys(instances).filter(k => k !== 'Physical');
+        let instanceAssignments = [];
+        instKeys.forEach(instName => {
+            if (instances[instName]?.[cpu]?.size > 0) {
+                const roles = Array.from(instances[instName][cpu]).map(roleId => {
+                    const r = ROLES.find(x => x.id === roleId);
+                    return r ? r.name : roleId;
+                }).join(', ');
+                instanceAssignments.push(`${instName}: ${roles}`);
             }
         });
-        if (occupiedBy.length > 0) {
-            html += `<div style="margin-top:5px; border-top:1px dashed #444; padding-top:2px; font-size:11px; color:#999;">Also on: ${occupiedBy.join(', ')}</div>`;
+        if (instanceAssignments.length > 0) {
+            html += `<div style="margin-top:5px; border-top:1px dashed #444; padding-top:2px; font-size:11px; color:#4ec9b0;">`;
+            html += `<strong>Instances:</strong><br>`;
+            instanceAssignments.forEach(ia => {
+                html += `• ${ia}<br>`;
+            });
+            html += `</div>`;
         }
 
         tooltipEl.innerHTML = html;
@@ -939,110 +1002,108 @@
         updateDashboard();
 
         const instKeys = Object.keys(instances).filter(k => k !== 'Physical').sort();
-        const allKeys = ['Physical', ...instKeys];
+        
+        // Render only the unified Physical layer with instance overlays
+        const section = document.createElement('div');
+        section.className = 'map-section';
+        
+        const title = document.createElement('div');
+        title.className = 'map-title';
+        
+        // Build title with instance tags if any
+        let titleHtml = '<span>CPU Topology';
+        if (instKeys.length > 0) {
+            titleHtml += ' (Instances: ' + instKeys.join(', ') + ')';
+        }
+        titleHtml += '</span>';
+        title.innerHTML = titleHtml;
+        section.appendChild(title);
 
-        allKeys.forEach(instName => {
-            const section = document.createElement('div');
-            section.className = 'map-section';
-            
-            const title = document.createElement('div');
-            title.className = 'map-title';
-            title.innerHTML = `<span>${instName === 'Physical' ? 'Physical Layer' : instName}</span> <span class="instance-tag">${instName}</span>`;
-            section.appendChild(title);
+        Object.keys(geom).sort((a,b)=>a-b).forEach(s => {
+            const sBox = document.createElement('div');
+            sBox.className = 'hierarchy-box socket-box';
+            sBox.innerHTML = `<div class="box-label socket-label">SOCKET ${s}</div>`;
 
-            Object.keys(geom).sort((a,b)=>a-b).forEach(s => {
-                const sBox = document.createElement('div');
-                sBox.className = 'hierarchy-box socket-box';
-                sBox.innerHTML = `<div class="box-label socket-label">SOCKET ${s}</div>`;
-
-                Object.keys(geom[s]).sort((a,b)=>a-b).forEach(n => {
-                    const nBox = document.createElement('div');
-                    let isNet = netNumaNodes.has(n);
-                    nBox.className = 'hierarchy-box numa-box' + (isNet ? ' is-network-node' : '');
-                    
-                    // Build NUMA label with tier information
-                    let numaLabelText = `NUMA ${n}`;
-                    let numaLabelStyle = '';
-                    
-                    // Calculate tier if network node is known and distance data exists
-                    if (netNumaNodes.size > 0 && Object.keys(numaDistances).length > 0) {
-                        const netNode = Array.from(netNumaNodes)[0]; // Use first network node as reference
-                        if (numaDistances[netNode] && numaDistances[netNode][n] !== undefined) {
-                            const distance = numaDistances[netNode][n];
-                            let tierColor = '#666'; // Gray - Remote
-                            let tierName = 'Remote';
-                            
-                            if (distance <= 10) {
-                                tierColor = '#ffd700'; // Gold - Same NUMA
-                                tierName = 'Same NUMA';
-                            } else if (distance <= 21) {
-                                tierColor = '#c0c0c0'; // Silver - Same Socket
-                                tierName = 'Same Socket';
-                            } else if (distance <= 31) {
-                                tierColor = '#cd7f32'; // Bronze - Cross Socket
-                                tierName = 'Cross Socket';
-                            }
-                            
-                            numaLabelStyle = `background-color: ${tierColor}; color: #000; font-weight: bold;`;
-                            numaLabelText += ` [${tierName}]`;
+            Object.keys(geom[s]).sort((a,b)=>a-b).forEach(n => {
+                const nBox = document.createElement('div');
+                let isNet = netNumaNodes.has(n);
+                nBox.className = 'hierarchy-box numa-box' + (isNet ? ' is-network-node' : '');
+                
+                // Build NUMA label with tier information
+                let numaLabelText = `NUMA ${n}`;
+                let numaLabelStyle = '';
+                
+                // Calculate tier if network node is known and distance data exists
+                if (netNumaNodes.size > 0 && Object.keys(numaDistances).length > 0) {
+                    const netNode = Array.from(netNumaNodes)[0]; // Use first network node as reference
+                    if (numaDistances[netNode] && numaDistances[netNode][n] !== undefined) {
+                        const distance = numaDistances[netNode][n];
+                        let tierColor = '#666'; // Gray - Remote
+                        let tierName = 'Remote';
+                        
+                        if (distance <= 10) {
+                            tierColor = '#ffd700'; // Gold - Same NUMA
+                            tierName = 'Same NUMA';
+                        } else if (distance <= 21) {
+                            tierColor = '#c0c0c0'; // Silver - Same Socket
+                            tierName = 'Same Socket';
+                        } else if (distance <= 31) {
+                            tierColor = '#cd7f32'; // Bronze - Cross Socket
+                            tierName = 'Cross Socket';
                         }
+                        
+                        numaLabelStyle = `background-color: ${tierColor}; color: #000; font-weight: bold;`;
+                        numaLabelText += ` [${tierName}]`;
                     }
-                    
-                    let numaHeaderHtml = `<div class="box-label numa-label" style="${numaLabelStyle}">${numaLabelText}</div>`;
-                    if (isNet) numaHeaderHtml += `<div class="nic-badge" title="Network Attached">NETWORK NODE</div>`;
-                    nBox.innerHTML = numaHeaderHtml;
+                }
+                
+                let numaHeaderHtml = `<div class="box-label numa-label" style="${numaLabelStyle}">${numaLabelText}</div>`;
+                if (isNet) numaHeaderHtml += `<div class="nic-badge" title="Network Attached">NETWORK NODE</div>`;
+                nBox.innerHTML = numaHeaderHtml;
 
-                    Object.keys(geom[s][n]).sort((a,b)=>parseInt(a)-parseInt(b)).forEach(c => {
-                        const l3Box = document.createElement('div');
-                        l3Box.className = 'hierarchy-box l3-box';
-                        l3Box.innerHTML = `<div class="box-label l3-label">L3 #${c}</div>`;
+                Object.keys(geom[s][n]).sort((a,b)=>parseInt(a)-parseInt(b)).forEach(c => {
+                    const l3Box = document.createElement('div');
+                    l3Box.className = 'hierarchy-box l3-box';
+                    l3Box.innerHTML = `<div class="box-label l3-label">L3 #${c}</div>`;
 
-                        geom[s][n][c].forEach(cpu => {
-                            const cell = document.createElement('div');
-                            cell.className = 'core is-isolated';
-                            cell.id = `core-${instName}-${cpu}`; 
-                            cell.dataset.cpu = cpu;
-                            cell.setAttribute('draggable', 'false'); 
-                            
-                            cell.onmousedown = (e) => {
-                                isMouseDown = true;
+                    geom[s][n][c].forEach(cpu => {
+                        const cell = document.createElement('div');
+                        cell.className = 'core is-isolated';
+                        cell.id = `core-Physical-${cpu}`; 
+                        cell.dataset.cpu = cpu;
+                        cell.setAttribute('draggable', 'false'); 
+                        
+                        cell.onmousedown = (e) => {
+                            isMouseDown = true;
+                            const isEraser = e.ctrlKey || e.metaKey;
+                            applyTool('Physical', cpu, false, isEraser); 
+                        };
+                        cell.onmouseenter = (e) => {
+                            if(isMouseDown) {
                                 const isEraser = e.ctrlKey || e.metaKey;
-                                applyTool(instName, cpu, false, isEraser); 
-                            };
-                            cell.onmouseenter = (e) => {
-                                if(isMouseDown) {
-                                    const isEraser = e.ctrlKey || e.metaKey;
-                                    applyTool(instName, cpu, true, isEraser);
-                                }
-                                showTooltip(e, instName, cpu);
-                            };
-                            cell.onmousemove = moveTooltip;
-                            cell.onmouseleave = hideTooltip;
-                            cell.ondragstart = () => false;
+                                applyTool('Physical', cpu, true, isEraser);
+                            }
+                            showTooltip(e, 'Physical', cpu);
+                        };
+                        cell.onmousemove = moveTooltip;
+                        cell.onmouseleave = hideTooltip;
+                        cell.ondragstart = () => false;
 
-                            l3Box.appendChild(cell);
-                        });
-                        nBox.appendChild(l3Box);
+                        l3Box.appendChild(cell);
                     });
-                    sBox.appendChild(nBox);
+                    nBox.appendChild(l3Box);
                 });
-                section.appendChild(sBox);
+                sBox.appendChild(nBox);
             });
-            contentWrapper.appendChild(section);
+            section.appendChild(sBox);
         });
+        contentWrapper.appendChild(section);
 
-        allKeys.forEach(inst => {
-            if(instances[inst]) {
-                Object.keys(instances[inst]).forEach(cpu => updateCoreVisual(inst, cpu));
-                const usedCores = new Set();
-                allKeys.forEach(other => {
-                    if(other !== inst && instances[other]) {
-                        Object.keys(instances[other]).forEach(c => usedCores.add(c));
-                    }
-                });
-                usedCores.forEach(c => updateCoreVisual(inst, c));
-            }
-        });
+        // Update visuals for all cores including instance overlays
+        if(instances['Physical']) {
+            Object.keys(instances['Physical']).forEach(cpu => updateCoreVisual('Physical', cpu));
+        }
+        
         updateStats();
         calculateSizing();
     }

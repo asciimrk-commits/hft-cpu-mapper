@@ -59,7 +59,7 @@ cat /sys/devices/system/cpu/isolated 2>/dev/null || echo "none"
 echo ""
 echo ">>> 4. NETWORK"
 
-for iface in $(ls /sys/class/net/ 2>/dev/null | grep -E '^(eth|ens|enp|eno|ena)'); do
+for iface in $(ls /sys/class/net/ 2>/dev/null | grep -E '^(eth|ens|enp|eno|ena|eni)'); do
     echo "--- Interface: $iface ---"
     
     # NUMA node
