@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>HFT CPU Mapper v3.3</title>
+    <title>HFT CPU Mapper v3.5</title>
     <style>
         :root {
             --bg: #0a0a0f;
@@ -25,9 +25,9 @@
             --role-os: #607d8b;
             --role-irq: #d500f9;
             --role-udp: #ff6d00;
-            --role-robot: #ff4081; /* Standard Robot */
-            --role-pool1: #ff2d55; /* Robot Pool 1 */
-            --role-pool2: #d50000; /* Robot Pool 2 */
+            --role-robot: #ff4081; 
+            --role-pool1: #ff2d55; 
+            --role-pool2: #d50000; 
             --role-ar: #c2185b;
             --role-gateway: #107c10;
             --role-rf: #008080;
@@ -834,7 +834,6 @@ const ROLES = [
     { id: 'click',    name: 'Clickhouse',    color: '#ffcc00' },
     { id: 'formula',  name: 'Formula',       color: '#ffffff' },
     { id: 'trash',    name: 'Trash',         color: '#8a6d3b' },
-    // ADDED: Isolated role (Purple)
     { id: 'isolated', name: 'Isolated',      color: '#7b1fa2' }
 ];
 
@@ -850,7 +849,6 @@ const ROLE_KEY_MAP = {
     'UdpSendCores': 'udp',
     'RobotsNode1': 'pool1',
     'RobotsNode2': 'pool2',
-    // ADDED: Map dictionary 'Isolated' key to visual role
     'Isolated': 'isolated'
 };
 
@@ -858,7 +856,6 @@ const ROLES_BY_ID = {};
 ROLES.forEach(r => ROLES_BY_ID[r.id] = r);
 
 // Priority list for display (Higher number = overrides lower)
-// 'isolated' is lowest priority, so if any other tag exists, isolated is hidden
 const ROLE_PRIORITY = {
     'sys_os': 100,
     'net_irq': 100,
@@ -999,14 +996,17 @@ function parse(text) {
     let currentInstance = null;
     let currentInterface = null;
     let parsingNetworkCpus = false;
+    let listBuffer = "";
+    let isBuffering = false;
 
     for (let line of lines) {
         line = line.trim();
         if (!line) continue;
 
-        if (line.startsWith('=== Подключение к')) {
-            const parts = line.split(' ');
-            if (parts.length >= 4) serverName = parts[3].replace('.qb.loc', '');
+        // FIXED: Robust server name parsing
+        const serverMatch = line.match(/Подключение к\s+([^\s]+)/);
+        if (serverMatch) {
+            serverName = serverMatch[1].replace('.qb.loc', '').replace('===', '').trim();
         }
 
         if (line.includes('>>> 1. LSCPU')) { mode = 'lscpu'; continue; }
@@ -1102,24 +1102,54 @@ function parse(text) {
                 }
             }
 
-            const cpuDictMatch = line.match(/'cpu_id':\s*(\d+)/);
+            let processLine = line;
+            if (isBuffering) {
+                listBuffer += " " + line;
+                if (line.includes(']')) {
+                    isBuffering = false;
+                    processLine = listBuffer;
+                    listBuffer = "";
+                } else {
+                    continue; 
+                }
+            } else {
+                if (line.includes('[') && !line.includes(']')) {
+                    isBuffering = true;
+                    listBuffer = line;
+                    continue;
+                }
+            }
+
+            const cpuDictMatch = processLine.match(/'cpu_id':\s*(\d+)/);
             if (cpuDictMatch) {
                 const cpuId = cpuDictMatch[1];
-                if (line.includes("'net_cpu':")) {
+                if (processLine.includes("'net_cpu':")) {
                     addTag('Physical', cpuId, 'net_irq');
                     const n = coreNumaMap[cpuId];
                     if (n !== undefined) netNumaNodes.add(n.toString());
                 }
-                if (line.includes("'isolated': True")) isolatedCores.add(cpuId);
+                if (processLine.includes("'isolated': True")) isolatedCores.add(cpuId);
                 
                 Object.keys(ROLE_KEY_MAP).forEach(key => {
                     const pattern = new RegExp(`['"]?${key}['"]?:\\s*\\[([^\\]]+)\\]`);
-                    const match = line.match(pattern);
+                    const match = processLine.match(pattern);
                     if (match) {
                         const instNames = match[1].split(',').map(s => s.trim().replace(/['"]/g, ''));
                         instNames.forEach(instName => {
                             if (!instances[instName]) instances[instName] = {};
                             addTag(instName, cpuId, ROLE_KEY_MAP[key]);
+                        });
+                    }
+                });
+            } else {
+                 Object.keys(ROLE_KEY_MAP).forEach(key => {
+                    const pattern = new RegExp(`['"]?${key}['"]?:\\s*\\[([^\\]]+)\\]`);
+                    const match = processLine.match(pattern);
+                    if (match && currentInstance && currentInstance !== 'Physical') {
+                        const cores = match[1].split(',').map(s => s.trim());
+                        cores.forEach(c => {
+                             const cpuId = c;
+                             addTag(currentInstance, cpuId, ROLE_KEY_MAP[key]);
                         });
                     }
                 });
@@ -1252,24 +1282,19 @@ function renderCore(instanceName, cpu) {
     `;
 }
 
-// HELPER: Get effective tags by priority
-// If specific tags exist (gateway, robot), hide 'isolated'
 function getDisplayTags(instanceName, cpu) {
     let allTags = new Set();
     
-    // Add Physical layer tags
     if (instances['Physical']?.[cpu]) {
         instances['Physical'][cpu].forEach(t => allTags.add(t));
     }
     
-    // Add tags from all other instances
     Object.keys(instances).forEach(instName => {
         if (instName !== 'Physical' && instances[instName]?.[cpu]) {
             instances[instName][cpu].forEach(t => allTags.add(t));
         }
     });
 
-    // Check if we have high priority tags
     let hasHighPriority = false;
     for (let t of allTags) {
         if ((ROLE_PRIORITY[t] || 0) > ROLE_PRIORITY['isolated']) {
@@ -1278,15 +1303,12 @@ function getDisplayTags(instanceName, cpu) {
         }
     }
 
-    // Filter tags logic
     const displayTags = [];
     allTags.forEach(t => {
-        // If we have high priority tags, skip 'isolated'
         if (t === 'isolated' && hasHighPriority) return;
         displayTags.push(t);
     });
 
-    // Sort by priority descending
     displayTags.sort((a, b) => (ROLE_PRIORITY[b] || 0) - (ROLE_PRIORITY[a] || 0));
     
     return displayTags;
@@ -1383,8 +1405,6 @@ function applyTool(instanceName, cpu, forceAdd, isEraser) {
 // ==================== TOOLTIP ====================
 function showTooltip(e, instanceName, cpu) {
     const tooltip = document.getElementById('tooltip');
-    
-    // Use the filtered display tags for the tooltip too
     const tags = getDisplayTags(instanceName, cpu);
     const load = cpuLoadMap[cpu];
     
@@ -1455,7 +1475,6 @@ function updateStats() {
         
         for (const [cpu, tags] of Object.entries(data)) {
             tags.forEach(t => {
-                // IMPORTANT: Filter isolated here too if needed, but usually config export keeps raw data
                 if (!roleCores[t]) roleCores[t] = [];
                 roleCores[t].push(parseInt(cpu));
             });
@@ -1505,7 +1524,7 @@ function calculateSizing() {
 // ==================== IMPORT / EXPORT ====================
 function exportConfig() {
     const config = {
-        version: "3.3",
+        version: "3.5",
         serverName: serverName,
         timestamp: new Date().toISOString(),
         geometry: globalGeometry,
@@ -1595,7 +1614,6 @@ function validateConfig() {
             
             DEDICATED.forEach(role => {
                 if (tags.has(role) && tags.size > 1) {
-                    // Check if the other tags are just 'isolated', which is allowed
                     const meaningfulTags = tagsArr.filter(t => t !== 'isolated');
                     if (meaningfulTags.length > 1 && meaningfulTags.includes(role)) {
                          const others = meaningfulTags.filter(t => t !== role).map(t => ROLES_BY_ID[t]?.name || t).join(', ');
@@ -1711,6 +1729,7 @@ function clearCompare(target) {
     initDragDrop();
 }
 
+// FIXED: Iterates through ALL instances to find tags
 function renderComparePanel(target, config) {
     const body = document.getElementById(`compare-${target}-body`);
     
@@ -1740,11 +1759,20 @@ function renderComparePanel(target, config) {
                 html += '<div class="cores-grid" style="margin-top:12px;">';
                 
                 geom[socketId][numaId][l3Id].forEach(cpu => {
-                    const tags = insts['Physical']?.[cpu] || [];
+                    // FIX: Collect tags from all instances
+                    const tags = [];
+                    Object.keys(insts).forEach(instName => {
+                        if (insts[instName][cpu]) {
+                            tags.push(...insts[instName][cpu]);
+                        }
+                    });
+
                     let bg = '#151520';
                     let border = '#333';
                     
                     if (tags.length > 0) {
+                        // Use priority list to determine color if multiple tags
+                        tags.sort((a, b) => (ROLE_PRIORITY[b] || 0) - (ROLE_PRIORITY[a] || 0));
                         const role = ROLES_BY_ID[tags[0]];
                         if (role) {
                             bg = role.color;
@@ -1772,16 +1800,36 @@ function renderComparePanel(target, config) {
 function calculateDiff() {
     if (!compareOld || !compareNew) return;
     
-    const oldInst = compareOld.instances?.['Physical'] || {};
-    const newInst = compareNew.instances?.['Physical'] || {};
+    // Helper to get ALL tags for a CPU from a config
+    const getTags = (cfg, cpu) => {
+        const t = new Set();
+        if (cfg.instances) {
+            Object.keys(cfg.instances).forEach(inst => {
+                if (cfg.instances[inst][cpu]) {
+                    cfg.instances[inst][cpu].forEach(x => t.add(x));
+                }
+            });
+        }
+        return t;
+    };
     
-    const allCpus = new Set([...Object.keys(oldInst), ...Object.keys(newInst)]);
+    // Gather all CPUs from both configs
+    const allCpus = new Set();
+    const addCpus = (cfg) => {
+        if(cfg.instances) {
+            Object.values(cfg.instances).forEach(inst => {
+                Object.keys(inst).forEach(c => allCpus.add(c));
+            });
+        }
+    };
+    addCpus(compareOld);
+    addCpus(compareNew);
     
     let added = 0, removed = 0, changed = 0;
     
     allCpus.forEach(cpu => {
-        const oldTags = new Set(oldInst[cpu] || []);
-        const newTags = new Set(newInst[cpu] || []);
+        const oldTags = getTags(compareOld, cpu);
+        const newTags = getTags(compareNew, cpu);
         
         const hadRole = oldTags.size > 0;
         const hasRole = newTags.size > 0;
