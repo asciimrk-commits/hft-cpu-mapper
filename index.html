@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>HFT CPU Mapper v3.1</title>
+    <title>HFT CPU Mapper v3.2</title>
     <style>
         :root {
             --bg: #0a0a0f;
@@ -21,19 +21,19 @@
             --numa-net: #ffd700;
             --l3: #4ec9b0;
             
+            /* Roles Colors */
             --role-os: #607d8b;
             --role-irq: #d500f9;
             --role-udp: #ff6d00;
-            --role-robot: #e81123;
+            --role-robot: #ff4081; /* Standard Robot */
+            --role-pool1: #ff2d55; /* Robot Pool 1 (Node 1) - Pink/Red */
+            --role-pool2: #d50000; /* Robot Pool 2 (Node 2) - Deep Red */
             --role-ar: #c2185b;
             --role-gateway: #107c10;
             --role-rf: #008080;
             --role-click: #ffcc00;
             --role-formula: #ffffff;
             --role-trash: #8a6d3b;
-            /* New roles colors */
-            --role-pool1: #ff2d55;
-            --role-pool2: #d50000;
             
             --core-size: 38px;
             --sidebar-width: 260px;
@@ -824,16 +824,15 @@ const ROLES = [
     { id: 'sys_os',   name: 'System (OS)',   color: '#607d8b' },
     { id: 'net_irq',  name: 'IRQ (Net)',     color: '#d500f9' },
     { id: 'udp',      name: 'UDP',           color: '#ff6d00' },
-    { id: 'robot',    name: 'Robot',         color: '#e81123' },
+    { id: 'robot',    name: 'Robot',         color: '#ff4081' },
+    { id: 'pool1',    name: 'Robot Pool 1',  color: '#ff2d55' },
+    { id: 'pool2',    name: 'Robot Pool 2',  color: '#d50000' },
     { id: 'ar',       name: 'AR',            color: '#c2185b' },
     { id: 'gateway',  name: 'Gateway',       color: '#107c10' },
     { id: 'rf',       name: 'RF (Remote)',   color: '#008080' },
     { id: 'click',    name: 'Clickhouse',    color: '#ffcc00' },
     { id: 'formula',  name: 'Formula',       color: '#ffffff' },
-    { id: 'trash',    name: 'Trash',         color: '#8a6d3b' },
-    // ADDED: Robot Pools
-    { id: 'pool1',    name: 'Robot Pool 1',  color: '#ff2d55' },
-    { id: 'pool2',    name: 'Robot Pool 2',  color: '#d50000' }
+    { id: 'trash',    name: 'Trash',         color: '#8a6d3b' }
 ];
 
 const ROLE_KEY_MAP = {
@@ -846,7 +845,6 @@ const ROLE_KEY_MAP = {
     'TrashCPU': 'trash',
     'UdpReceiveCores': 'udp',
     'UdpSendCores': 'udp',
-    // ADDED: Mappings for Pools
     'RobotsNode1': 'pool1',
     'RobotsNode2': 'pool2'
 };
@@ -977,6 +975,7 @@ function parse(text) {
     let mode = 'none';
     let currentInstance = null;
     let currentInterface = null;
+    let parsingNetworkCpus = false; // Flag to distinguish REAL network section from topology
 
     for (let line of lines) {
         line = line.trim();
@@ -1039,7 +1038,7 @@ function parse(text) {
             }
         }
 
-        // Network interfaces
+        // Network interfaces (Mode 4)
         if (mode === 'network') {
             if (line.startsWith('Interface:')) {
                 const ifaceMatch = line.match(/Interface:\s*(\S+)/);
@@ -1073,7 +1072,7 @@ function parse(text) {
             }
         }
 
-        // Runtime config
+        // Runtime config (Mode 5)
         if (mode === 'runtime') {
             const instanceMatch = line.match(/^(\w+):$/);
             if (instanceMatch) {
@@ -1097,7 +1096,8 @@ function parse(text) {
                 if (line.includes("'isolated': True")) isolatedCores.add(cpuId);
                 
                 Object.keys(ROLE_KEY_MAP).forEach(key => {
-                    const pattern = new RegExp(`'${key}':\\s*\\[([^\\]]+)\\]`);
+                    // Robust regex handling optional quotes and spacing
+                    const pattern = new RegExp(`['"]?${key}['"]?:\\s*\\[([^\\]]+)\\]`);
                     const match = line.match(pattern);
                     if (match) {
                         const instNames = match[1].split(',').map(s => s.trim().replace(/['"]/g, ''));
@@ -1113,9 +1113,28 @@ function parse(text) {
                 parseRangeStr(line.replace('System cpus:', '')).forEach(c => addTag('Physical', c.toString(), 'sys_os'));
             }
 
-            // FIXED: Removed textual parsing of 'net0: ...' lines in runtime section
-            // This prevents reading "Numa network interfaces topology information" (which lists 24-47)
-            // as active assignments. We rely solely on the python dictionary dump above which is accurate.
+            // --- STRICT IRQ TEXT PARSING ---
+            if (line.includes('topology information')) {
+                parsingNetworkCpus = false; // Disable parsing for topology section
+            }
+            if (line.startsWith('Network interfaces cpus:')) {
+                parsingNetworkCpus = true; // Enable parsing for real assignment section
+            }
+            
+            if (parsingNetworkCpus && line.match(/^(net\d+|eni\d+|eth\d+|ens\d+|enp\d+):\s*([\d,\s-]+)$/)) {
+                const netMatch = line.match(/^([^:]+):\s*([\d,\s-]+)$/);
+                if (netMatch) {
+                    const cores = parseRangeStr(netMatch[2]);
+                    cores.forEach(c => addTag('Physical', c.toString(), 'net_irq'));
+                    if (cores.length > 0) {
+                        // Infer NUMA from these cores
+                        cores.forEach(c => {
+                            const n = coreNumaMap[c.toString()];
+                            if (n !== undefined) netNumaNodes.add(n.toString());
+                        });
+                    }
+                }
+            }
         }
 
         // CPU Load
@@ -1449,7 +1468,7 @@ function calculateSizing() {
 // ==================== IMPORT / EXPORT ====================
 function exportConfig() {
     const config = {
-        version: "3.0",
+        version: "3.2",
         serverName: serverName,
         timestamp: new Date().toISOString(),
         geometry: globalGeometry,
@@ -1524,7 +1543,7 @@ function applyConfig(config) {
 // ==================== VALIDATION ====================
 function validateConfig() {
     const errors = [], warnings = [], info = [];
-    const DEDICATED = ['gateway', 'robot', 'net_irq'];
+    const DEDICATED = ['gateway', 'robot', 'pool1', 'pool2', 'net_irq'];
     const NET_REQUIRED = ['gateway', 'net_irq'];
     const netNodes = [...netNumaNodes];
     
@@ -1556,9 +1575,9 @@ function validateConfig() {
             }
             
             // Load check for critical services
-            if ((tags.has('gateway') || tags.has('robot')) && load > 80) {
+            if ((tags.has('gateway') || tags.has('robot') || tags.has('pool1') || tags.has('pool2')) && load > 80) {
                 errors.push(`[${instName}] CPU ${cpu}: Critical service overloaded (${load}%)`);
-            } else if ((tags.has('gateway') || tags.has('robot')) && load > 50) {
+            } else if ((tags.has('gateway') || tags.has('robot') || tags.has('pool1') || tags.has('pool2')) && load > 50) {
                 warnings.push(`[${instName}] CPU ${cpu}: High load on critical service (${load}%)`);
             }
         });
