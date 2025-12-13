@@ -1254,35 +1254,41 @@ function updateCoreVisual(instanceName, cpu) {
     const el = document.getElementById(`core-${instanceName}-${cpu}`);
     if (!el) return;
     
-    const tags = instances[instanceName]?.[cpu] || new Set();
+    // Collect all roles for this CPU from all instances
+    let allTags = new Set();
+    
+    // First, add Physical layer tags
+    if (instances['Physical']?.[cpu]) {
+        instances['Physical'][cpu].forEach(t => allTags.add(t));
+    }
+    
+    // Then add tags from all other instances
+    Object.keys(instances).forEach(instName => {
+        if (instName !== 'Physical' && instances[instName]?.[cpu]) {
+            instances[instName][cpu].forEach(t => allTags.add(t));
+        }
+    });
     
     el.classList.remove('has-role', 'diff-added', 'diff-removed', 'diff-changed');
     el.style.background = '';
     el.style.borderColor = '';
+    el.style.opacity = '';
     
-    if (tags.size > 0) {
+    if (allTags.size > 0) {
         el.classList.add('has-role');
-        const primaryRole = ROLES_BY_ID[[...tags][0]];
+        const tagsArray = [...allTags];
+        const primaryRole = ROLES_BY_ID[tagsArray[0]];
+        
         if (primaryRole) {
             el.style.background = primaryRole.color;
             el.style.borderColor = primaryRole.color;
         }
         
-        if (tags.size > 1) {
-            const colors = [...tags].map(t => ROLES_BY_ID[t]?.color || '#fff');
+        if (tagsArray.length > 1) {
+            const colors = tagsArray.map(t => ROLES_BY_ID[t]?.color || '#fff');
             const gradient = colors.map((c, i) => `${c} ${(i/colors.length)*100}%, ${c} ${((i+1)/colors.length)*100}%`).join(',');
             el.style.background = `linear-gradient(135deg, ${gradient})`;
             el.style.borderColor = '#fff';
-        }
-    } else {
-        // Check physical layer for ghost roles
-        const physTags = instances['Physical']?.[cpu] || new Set();
-        if (physTags.size > 0) {
-            const ghostRole = ROLES_BY_ID[[...physTags][0]];
-            if (ghostRole) {
-                el.style.background = ghostRole.color;
-                el.style.opacity = '0.35';
-            }
         }
     }
 }
@@ -1396,19 +1402,23 @@ function updateStats() {
     
     const instKeys = Object.keys(instances).filter(k => k !== 'Physical').sort();
     
+    // Physical layer - only OS and IRQ
     if (instances['Physical']) {
         txt += '\n### Physical ###\n';
         const roles = {};
         for (const [cpu, tags] of Object.entries(instances['Physical'])) {
             tags.forEach(t => {
-                if (!roles[t]) roles[t] = [];
-                roles[t].push(parseInt(cpu));
+                if (t === 'sys_os' || t === 'net_irq') {
+                    if (!roles[t]) roles[t] = [];
+                    roles[t].push(parseInt(cpu));
+                }
             });
         }
         if (roles['sys_os']) txt += `System: [${roles['sys_os'].sort((a,b)=>a-b).join(', ')}]\n`;
         if (roles['net_irq']) txt += `IRQ:    [${roles['net_irq'].sort((a,b)=>a-b).join(', ')}]\n`;
     }
 
+    // Instance-specific roles
     instKeys.forEach(inst => {
         txt += `\n### ${inst} ###\n`;
         const roleCores = {};
