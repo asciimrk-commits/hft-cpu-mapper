@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>HFT CPU Mapper v3.2</title>
+    <title>HFT CPU Mapper v3.3</title>
     <style>
         :root {
             --bg: #0a0a0f;
@@ -26,14 +26,15 @@
             --role-irq: #d500f9;
             --role-udp: #ff6d00;
             --role-robot: #ff4081; /* Standard Robot */
-            --role-pool1: #ff2d55; /* Robot Pool 1 (Node 1) - Pink/Red */
-            --role-pool2: #d50000; /* Robot Pool 2 (Node 2) - Deep Red */
+            --role-pool1: #ff2d55; /* Robot Pool 1 */
+            --role-pool2: #d50000; /* Robot Pool 2 */
             --role-ar: #c2185b;
             --role-gateway: #107c10;
             --role-rf: #008080;
             --role-click: #ffcc00;
             --role-formula: #ffffff;
             --role-trash: #8a6d3b;
+            --role-isolated: #7b1fa2; /* Purple for Isolated */
             
             --core-size: 38px;
             --sidebar-width: 260px;
@@ -832,7 +833,9 @@ const ROLES = [
     { id: 'rf',       name: 'RF (Remote)',   color: '#008080' },
     { id: 'click',    name: 'Clickhouse',    color: '#ffcc00' },
     { id: 'formula',  name: 'Formula',       color: '#ffffff' },
-    { id: 'trash',    name: 'Trash',         color: '#8a6d3b' }
+    { id: 'trash',    name: 'Trash',         color: '#8a6d3b' },
+    // ADDED: Isolated role (Purple)
+    { id: 'isolated', name: 'Isolated',      color: '#7b1fa2' }
 ];
 
 const ROLE_KEY_MAP = {
@@ -846,11 +849,31 @@ const ROLE_KEY_MAP = {
     'UdpReceiveCores': 'udp',
     'UdpSendCores': 'udp',
     'RobotsNode1': 'pool1',
-    'RobotsNode2': 'pool2'
+    'RobotsNode2': 'pool2',
+    // ADDED: Map dictionary 'Isolated' key to visual role
+    'Isolated': 'isolated'
 };
 
 const ROLES_BY_ID = {};
 ROLES.forEach(r => ROLES_BY_ID[r.id] = r);
+
+// Priority list for display (Higher number = overrides lower)
+// 'isolated' is lowest priority, so if any other tag exists, isolated is hidden
+const ROLE_PRIORITY = {
+    'sys_os': 100,
+    'net_irq': 100,
+    'pool1': 90,
+    'pool2': 90,
+    'robot': 90,
+    'gateway': 80,
+    'udp': 70,
+    'ar': 60,
+    'rf': 50,
+    'click': 40,
+    'formula': 30,
+    'trash': 20,
+    'isolated': 1 // Lowest priority
+};
 
 // ==================== STATE ====================
 let activeTool = ROLES[3]; // Robot by default
@@ -881,7 +904,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function initPalette() {
     const container = document.getElementById('palette');
-    container.innerHTML = ''; // Clear existing
+    container.innerHTML = ''; 
     ROLES.forEach(r => {
         const el = document.createElement('div');
         el.className = 'palette-item' + (r.id === activeTool.id ? ' active' : '');
@@ -975,19 +998,17 @@ function parse(text) {
     let mode = 'none';
     let currentInstance = null;
     let currentInterface = null;
-    let parsingNetworkCpus = false; // Flag to distinguish REAL network section from topology
+    let parsingNetworkCpus = false;
 
     for (let line of lines) {
         line = line.trim();
         if (!line) continue;
 
-        // Server name
         if (line.startsWith('=== Подключение к')) {
             const parts = line.split(' ');
             if (parts.length >= 4) serverName = parts[3].replace('.qb.loc', '');
         }
 
-        // Mode switches
         if (line.includes('>>> 1. LSCPU')) { mode = 'lscpu'; continue; }
         if (line.includes('>>> 2. NUMA TOPOLOGY')) { mode = 'numatopo'; continue; }
         if (line.includes('>>> 3. ISOLATED CORES')) { mode = 'isolated'; continue; }
@@ -996,7 +1017,6 @@ function parse(text) {
         if (line.includes('>>> 6. TOP INTERRUPTS')) { mode = 'interrupts'; continue; }
         if (line.includes('>>> 7. CPU LOAD')) { mode = 'cpuload'; continue; }
 
-        // LSCPU parsing
         if (mode === 'lscpu') {
             if (line.startsWith('CPU') || line.startsWith('#')) continue;
             const parts = line.split(',');
@@ -1031,14 +1051,12 @@ function parse(text) {
             if (parseInt(cpu) === 0) addTag('Physical', cpu, 'sys_os');
         }
 
-        // Isolated cores
         if (mode === 'isolated') {
             if (line !== 'none' && line.length > 0) {
                 parseRangeStr(line).forEach(c => isolatedCores.add(c.toString()));
             }
         }
 
-        // Network interfaces (Mode 4)
         if (mode === 'network') {
             if (line.startsWith('Interface:')) {
                 const ifaceMatch = line.match(/Interface:\s*(\S+)/);
@@ -1072,7 +1090,6 @@ function parse(text) {
             }
         }
 
-        // Runtime config (Mode 5)
         if (mode === 'runtime') {
             const instanceMatch = line.match(/^(\w+):$/);
             if (instanceMatch) {
@@ -1096,7 +1113,6 @@ function parse(text) {
                 if (line.includes("'isolated': True")) isolatedCores.add(cpuId);
                 
                 Object.keys(ROLE_KEY_MAP).forEach(key => {
-                    // Robust regex handling optional quotes and spacing
                     const pattern = new RegExp(`['"]?${key}['"]?:\\s*\\[([^\\]]+)\\]`);
                     const match = line.match(pattern);
                     if (match) {
@@ -1113,12 +1129,11 @@ function parse(text) {
                 parseRangeStr(line.replace('System cpus:', '')).forEach(c => addTag('Physical', c.toString(), 'sys_os'));
             }
 
-            // --- STRICT IRQ TEXT PARSING ---
             if (line.includes('topology information')) {
-                parsingNetworkCpus = false; // Disable parsing for topology section
+                parsingNetworkCpus = false;
             }
             if (line.startsWith('Network interfaces cpus:')) {
-                parsingNetworkCpus = true; // Enable parsing for real assignment section
+                parsingNetworkCpus = true;
             }
             
             if (parsingNetworkCpus && line.match(/^(net\d+|eni\d+|eth\d+|ens\d+|enp\d+):\s*([\d,\s-]+)$/)) {
@@ -1127,7 +1142,6 @@ function parse(text) {
                     const cores = parseRangeStr(netMatch[2]);
                     cores.forEach(c => addTag('Physical', c.toString(), 'net_irq'));
                     if (cores.length > 0) {
-                        // Infer NUMA from these cores
                         cores.forEach(c => {
                             const n = coreNumaMap[c.toString()];
                             if (n !== undefined) netNumaNodes.add(n.toString());
@@ -1137,7 +1151,6 @@ function parse(text) {
             }
         }
 
-        // CPU Load
         if (mode === 'cpuload') {
             if (line.includes('CPU') || line.includes('all') || line.includes('Average')) continue;
             const match = line.match(/(?:AM|PM)?\s*(\d+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)$/);
@@ -1162,17 +1175,14 @@ function render() {
 
     updateHeader();
     
-    // Calculate total cores for adaptive sizing
     const totalCores = Object.keys(coreNumaMap).length;
-    let sizeClass = 'cores-large'; // default for <= 32 cores
+    let sizeClass = 'cores-large';
     if (totalCores > 128) sizeClass = 'cores-small';
     else if (totalCores > 64) sizeClass = 'cores-medium';
     else if (totalCores <= 24) sizeClass = 'cores-xlarge';
     
-    // Build blueprint
     let html = `<div class="blueprint ${sizeClass}">`;
     
-    // Group sockets in rows of 2
     const sockets = Object.keys(geom).sort((a, b) => a - b);
     for (let i = 0; i < sockets.length; i += 2) {
         html += '<div class="sockets-row">';
@@ -1185,7 +1195,6 @@ function render() {
     html += '</div>';
     canvas.innerHTML = html;
     
-    // Update all cores visual
     Object.keys(coreNumaMap).forEach(cpu => updateCoreVisual('Physical', cpu));
     
     updateStats();
@@ -1243,42 +1252,67 @@ function renderCore(instanceName, cpu) {
     `;
 }
 
-function updateCoreVisual(instanceName, cpu) {
-    const el = document.getElementById(`core-${instanceName}-${cpu}`);
-    if (!el) return;
-    
-    // Collect all roles for this CPU from all instances
+// HELPER: Get effective tags by priority
+// If specific tags exist (gateway, robot), hide 'isolated'
+function getDisplayTags(instanceName, cpu) {
     let allTags = new Set();
     
-    // First, add Physical layer tags
+    // Add Physical layer tags
     if (instances['Physical']?.[cpu]) {
         instances['Physical'][cpu].forEach(t => allTags.add(t));
     }
     
-    // Then add tags from all other instances
+    // Add tags from all other instances
     Object.keys(instances).forEach(instName => {
         if (instName !== 'Physical' && instances[instName]?.[cpu]) {
             instances[instName][cpu].forEach(t => allTags.add(t));
         }
     });
+
+    // Check if we have high priority tags
+    let hasHighPriority = false;
+    for (let t of allTags) {
+        if ((ROLE_PRIORITY[t] || 0) > ROLE_PRIORITY['isolated']) {
+            hasHighPriority = true;
+            break;
+        }
+    }
+
+    // Filter tags logic
+    const displayTags = [];
+    allTags.forEach(t => {
+        // If we have high priority tags, skip 'isolated'
+        if (t === 'isolated' && hasHighPriority) return;
+        displayTags.push(t);
+    });
+
+    // Sort by priority descending
+    displayTags.sort((a, b) => (ROLE_PRIORITY[b] || 0) - (ROLE_PRIORITY[a] || 0));
+    
+    return displayTags;
+}
+
+function updateCoreVisual(instanceName, cpu) {
+    const el = document.getElementById(`core-${instanceName}-${cpu}`);
+    if (!el) return;
+    
+    const displayTags = getDisplayTags(instanceName, cpu);
     
     el.classList.remove('has-role', 'diff-added', 'diff-removed', 'diff-changed');
     el.style.background = '';
     el.style.borderColor = '';
-    el.style.opacity = '';
     
-    if (allTags.size > 0) {
+    if (displayTags.length > 0) {
         el.classList.add('has-role');
-        const tagsArray = [...allTags];
-        const primaryRole = ROLES_BY_ID[tagsArray[0]];
+        const primaryRole = ROLES_BY_ID[displayTags[0]];
         
         if (primaryRole) {
             el.style.background = primaryRole.color;
             el.style.borderColor = primaryRole.color;
         }
         
-        if (tagsArray.length > 1) {
-            const colors = tagsArray.map(t => ROLES_BY_ID[t]?.color || '#fff');
+        if (displayTags.length > 1) {
+            const colors = displayTags.map(t => ROLES_BY_ID[t]?.color || '#fff');
             const gradient = colors.map((c, i) => `${c} ${(i/colors.length)*100}%, ${c} ${((i+1)/colors.length)*100}%`).join(',');
             el.style.background = `linear-gradient(135deg, ${gradient})`;
             el.style.borderColor = '#fff';
@@ -1349,7 +1383,9 @@ function applyTool(instanceName, cpu, forceAdd, isEraser) {
 // ==================== TOOLTIP ====================
 function showTooltip(e, instanceName, cpu) {
     const tooltip = document.getElementById('tooltip');
-    const tags = instances[instanceName]?.[cpu] || new Set();
+    
+    // Use the filtered display tags for the tooltip too
+    const tags = getDisplayTags(instanceName, cpu);
     const load = cpuLoadMap[cpu];
     
     let html = `<div class="tooltip-header">Core ${cpu}</div>`;
@@ -1365,7 +1401,7 @@ function showTooltip(e, instanceName, cpu) {
         html += `<div style="color:#d500f9;font-size:10px;">IRQ: ${coreIRQMap[cpu].join(', ')}</div>`;
     }
     
-    if (tags.size > 0) {
+    if (tags.length > 0) {
         html += '<div style="margin-top:4px;">';
         tags.forEach(tid => {
             const r = ROLES_BY_ID[tid];
@@ -1419,6 +1455,7 @@ function updateStats() {
         
         for (const [cpu, tags] of Object.entries(data)) {
             tags.forEach(t => {
+                // IMPORTANT: Filter isolated here too if needed, but usually config export keeps raw data
                 if (!roleCores[t]) roleCores[t] = [];
                 roleCores[t].push(parseInt(cpu));
             });
@@ -1468,7 +1505,7 @@ function calculateSizing() {
 // ==================== IMPORT / EXPORT ====================
 function exportConfig() {
     const config = {
-        version: "3.2",
+        version: "3.3",
         serverName: serverName,
         timestamp: new Date().toISOString(),
         geometry: globalGeometry,
@@ -1527,7 +1564,6 @@ function applyConfig(config) {
         });
     });
     
-    // Rebuild coreNumaMap from geometry
     coreNumaMap = {};
     Object.keys(globalGeometry).forEach(socket => {
         Object.keys(globalGeometry[socket]).forEach(numa => {
@@ -1557,15 +1593,17 @@ function validateConfig() {
             const load = parseFloat(cpuLoadMap[cpu] || 0);
             const numa = coreNumaMap[cpu]?.toString();
             
-            // Dedicated core check
             DEDICATED.forEach(role => {
                 if (tags.has(role) && tags.size > 1) {
-                    const others = tagsArr.filter(t => t !== role).map(t => ROLES_BY_ID[t]?.name || t).join(', ');
-                    errors.push(`[${instName}] CPU ${cpu}: ${ROLES_BY_ID[role]?.name} needs dedicated core, shares with: ${others}`);
+                    // Check if the other tags are just 'isolated', which is allowed
+                    const meaningfulTags = tagsArr.filter(t => t !== 'isolated');
+                    if (meaningfulTags.length > 1 && meaningfulTags.includes(role)) {
+                         const others = meaningfulTags.filter(t => t !== role).map(t => ROLES_BY_ID[t]?.name || t).join(', ');
+                         errors.push(`[${instName}] CPU ${cpu}: ${ROLES_BY_ID[role]?.name} needs dedicated core, shares with: ${others}`);
+                    }
                 }
             });
             
-            // Network NUMA check
             if (netNodes.length > 0 && numa) {
                 NET_REQUIRED.forEach(role => {
                     if (tags.has(role) && !netNodes.includes(numa)) {
@@ -1574,7 +1612,6 @@ function validateConfig() {
                 });
             }
             
-            // Load check for critical services
             if ((tags.has('gateway') || tags.has('robot') || tags.has('pool1') || tags.has('pool2')) && load > 80) {
                 errors.push(`[${instName}] CPU ${cpu}: Critical service overloaded (${load}%)`);
             } else if ((tags.has('gateway') || tags.has('robot') || tags.has('pool1') || tags.has('pool2')) && load > 50) {
@@ -1583,7 +1620,6 @@ function validateConfig() {
         });
     });
     
-    // OS cores check
     const phys = instances['Physical'];
     if (phys) {
         const osCores = Object.keys(phys).filter(cpu => phys[cpu].has('sys_os'));
@@ -1599,7 +1635,6 @@ function validateConfig() {
         }
     }
     
-    // Output
     let html = '';
     if (errors.length === 0 && warnings.length === 0) {
         html = '<div class="val-ok">✓ Configuration valid</div>';
@@ -1679,7 +1714,6 @@ function clearCompare(target) {
 function renderComparePanel(target, config) {
     const body = document.getElementById(`compare-${target}-body`);
     
-    // Build geometry from config
     const geom = config.geometry || {};
     const netNumas = new Set(config.netNumaNodes || []);
     const insts = config.instances || {};
@@ -1752,20 +1786,16 @@ function calculateDiff() {
         const hadRole = oldTags.size > 0;
         const hasRole = newTags.size > 0;
         
-        // Find elements
         const oldEl = document.querySelector(`.compare-core[data-cpu="${cpu}"][data-target="old"]`);
         const newEl = document.querySelector(`.compare-core[data-cpu="${cpu}"][data-target="new"]`);
         
         if (!hadRole && hasRole) {
-            // Added
             added++;
             if (newEl) newEl.classList.add('diff-added');
         } else if (hadRole && !hasRole) {
-            // Removed
             removed++;
             if (oldEl) oldEl.classList.add('diff-removed');
         } else if (hadRole && hasRole) {
-            // Check if changed
             const same = oldTags.size === newTags.size && [...oldTags].every(t => newTags.has(t));
             if (!same) {
                 changed++;
