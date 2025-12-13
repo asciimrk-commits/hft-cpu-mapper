@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>HFT CPU Mapper v3.0</title>
+    <title>HFT CPU Mapper v3.1</title>
     <style>
         :root {
             --bg: #0a0a0f;
@@ -31,6 +31,9 @@
             --role-click: #ffcc00;
             --role-formula: #ffffff;
             --role-trash: #8a6d3b;
+            /* New roles colors */
+            --role-pool1: #ff2d55;
+            --role-pool2: #d50000;
             
             --core-size: 38px;
             --sidebar-width: 260px;
@@ -693,22 +696,18 @@
 </head>
 <body>
 
-<!-- Sidebar Toggle (outside sidebar for proper positioning) -->
 <div class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="Toggle Sidebar (Hotkey: [)">
     <span id="toggleIcon">◀</span>
 </div>
 
-<!-- Sidebar -->
 <div class="sidebar" id="sidebar">
     <div class="sidebar-content">
-        <!-- Data Input -->
         <div class="section">
             <div class="section-title">1. Input Data</div>
             <textarea id="inputData" placeholder="Paste cpu-map.sh output here..."></textarea>
             <button class="btn btn-primary" onclick="render()">Build Map</button>
         </div>
         
-        <!-- Tools -->
         <div class="section">
             <div class="section-title">2. Paint Tools</div>
             <div class="palette" id="palette"></div>
@@ -717,14 +716,12 @@
             </div>
         </div>
         
-        <!-- Config Output -->
         <div class="section">
             <div class="section-title">3. Config Output</div>
             <button class="btn btn-secondary" onclick="copyConfig()">📋 Copy Config</button>
             <div class="output-box" id="output">Waiting for data...</div>
         </div>
         
-        <!-- Sizing Calculator -->
         <div class="section">
             <div class="section-title">4. OS Sizing</div>
             <div style="display: flex; gap: 10px; font-size: 10px; margin-bottom: 6px;">
@@ -738,14 +735,12 @@
             </div>
         </div>
         
-        <!-- Import/Export -->
         <div class="section">
             <div class="section-title">5. Import / Export</div>
             <button class="btn btn-secondary" onclick="exportConfig()">💾 Export JSON</button>
             <button class="btn btn-secondary" onclick="importConfig()">📂 Import JSON</button>
         </div>
         
-        <!-- Validation -->
         <div class="section">
             <div class="section-title">6. Validation</div>
             <button class="btn btn-secondary" onclick="validateConfig()">✓ Validate</button>
@@ -756,15 +751,12 @@
     </div>
 </div>
 
-<!-- Main Area -->
 <div class="main">
-    <!-- Tabs -->
     <div class="tabs">
         <div class="tab active" data-tab="mapper" onclick="switchTab('mapper')">CPU Mapper</div>
         <div class="tab" data-tab="compare" onclick="switchTab('compare')">Compare Configs</div>
     </div>
     
-    <!-- Mapper Tab -->
     <div id="tab-mapper" class="tab-content" style="display: flex; flex-direction: column; flex: 1; overflow: hidden;">
         <div class="header" id="header" style="display: none;">
             <div class="header-left">
@@ -778,10 +770,8 @@
         </div>
     </div>
     
-    <!-- Compare Tab -->
     <div id="tab-compare" class="tab-content" style="display: none; flex-direction: column; flex: 1; overflow: hidden;">
         <div class="compare-container">
-            <!-- Old Config -->
             <div class="compare-panel">
                 <div class="compare-header">
                     <div class="compare-title">OLD CONFIG</div>
@@ -795,7 +785,6 @@
                 </div>
             </div>
             
-            <!-- New Config -->
             <div class="compare-panel">
                 <div class="compare-header">
                     <div class="compare-title">NEW CONFIG</div>
@@ -810,7 +799,6 @@
             </div>
         </div>
         
-        <!-- Compare Summary -->
         <div class="compare-summary" id="compare-summary" style="display: none;">
             <div class="summary-item">
                 <div class="summary-dot added"></div>
@@ -828,7 +816,6 @@
     </div>
 </div>
 
-<!-- Tooltip -->
 <div id="tooltip"></div>
 
 <script>
@@ -843,7 +830,10 @@ const ROLES = [
     { id: 'rf',       name: 'RF (Remote)',   color: '#008080' },
     { id: 'click',    name: 'Clickhouse',    color: '#ffcc00' },
     { id: 'formula',  name: 'Formula',       color: '#ffffff' },
-    { id: 'trash',    name: 'Trash',         color: '#8a6d3b' }
+    { id: 'trash',    name: 'Trash',         color: '#8a6d3b' },
+    // ADDED: Robot Pools
+    { id: 'pool1',    name: 'Robot Pool 1',  color: '#ff2d55' },
+    { id: 'pool2',    name: 'Robot Pool 2',  color: '#d50000' }
 ];
 
 const ROLE_KEY_MAP = {
@@ -855,7 +845,10 @@ const ROLE_KEY_MAP = {
     'RobotsDefault': 'robot',
     'TrashCPU': 'trash',
     'UdpReceiveCores': 'udp',
-    'UdpSendCores': 'udp'
+    'UdpSendCores': 'udp',
+    // ADDED: Mappings for Pools
+    'RobotsNode1': 'pool1',
+    'RobotsNode2': 'pool2'
 };
 
 const ROLES_BY_ID = {};
@@ -890,6 +883,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function initPalette() {
     const container = document.getElementById('palette');
+    container.innerHTML = ''; // Clear existing
     ROLES.forEach(r => {
         const el = document.createElement('div');
         el.className = 'palette-item' + (r.id === activeTool.id ? ' active' : '');
@@ -982,7 +976,6 @@ function parse(text) {
     const lines = text.split('\n');
     let mode = 'none';
     let currentInstance = null;
-    let ignoreNetSection = false;
     let currentInterface = null;
 
     for (let line of lines) {
@@ -1120,28 +1113,9 @@ function parse(text) {
                 parseRangeStr(line.replace('System cpus:', '')).forEach(c => addTag('Physical', c.toString(), 'sys_os'));
             }
 
-            if (line.includes('topology information')) ignoreNetSection = true;
-            if (line.includes('Network interfaces cpus')) ignoreNetSection = false;
-            
-            if (!ignoreNetSection && line.match(/^(net\d+|eni\d+|eth\d+|ens\d+|enp\d+):\s*([\d,\s-]+)$/)) {
-                const netMatch = line.match(/^([^:]+):\s*([\d,\s-]+)$/);
-                if (netMatch) {
-                    const cores = parseRangeStr(netMatch[2]);
-                    cores.forEach(c => addTag('Physical', c.toString(), 'net_irq'));
-                    if (cores.length > 0) {
-                        const nodeCounts = {};
-                        cores.forEach(c => {
-                            const n = coreNumaMap[c.toString()];
-                            if (n !== undefined) nodeCounts[n] = (nodeCounts[n] || 0) + 1;
-                        });
-                        let maxNode = null, maxCount = 0;
-                        for (const [n, count] of Object.entries(nodeCounts)) {
-                            if (count > maxCount) { maxCount = count; maxNode = n; }
-                        }
-                        if (maxNode !== null) netNumaNodes.add(maxNode.toString());
-                    }
-                }
-            }
+            // FIXED: Removed textual parsing of 'net0: ...' lines in runtime section
+            // This prevents reading "Numa network interfaces topology information" (which lists 24-47)
+            // as active assignments. We rely solely on the python dictionary dump above which is accurate.
         }
 
         // CPU Load
