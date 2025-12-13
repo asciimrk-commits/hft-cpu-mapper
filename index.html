@@ -2,1667 +2,1762 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>HFT Mapper v2.6 (Load Analysis)</title>
+    <title>HFT CPU Mapper v3.0</title>
     <style>
         :root {
-            --bg: #1e1e1e;
-            --panel: #252526;
-            --border: #333;
-            --text: #ccc;
+            --bg: #0a0a0f;
+            --panel: #0d0d15;
+            --panel-border: #1a1a2e;
+            --text: #c0c0c0;
+            --text-dim: #666;
+            --accent: #00d4ff;
+            --accent-dim: #0066aa;
             
-            /* SIZING */
-            --core-size: 55px;
-            --core-font: 16px;
-            --l3-width: 290px;
+            --socket0: #00d4ff;
+            --socket1: #ff6d00;
+            --numa: #c586c0;
+            --numa-net: #ffd700;
+            --l3: #4ec9b0;
             
-            /* Colors */
-            --socket-border: #ce9178; 
-            --numa-border: #c586c0; 
-            --net-numa-border: #00bcf2; 
-            --l3-border: #4ec9b0;
-            --l3-bg: #2d2d30;
+            --role-os: #607d8b;
+            --role-irq: #d500f9;
+            --role-udp: #ff6d00;
+            --role-robot: #e81123;
+            --role-ar: #c2185b;
+            --role-gateway: #107c10;
+            --role-rf: #008080;
+            --role-click: #ffcc00;
+            --role-formula: #ffffff;
+            --role-trash: #8a6d3b;
             
-            --net-badge-bg: #0078d4;
-            --net-badge-text: #fff;
+            --core-size: 26px;
+            --sidebar-width: 280px;
         }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         
         body {
-            font-family: 'Segoe UI', 'Consolas', monospace;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
             background: var(--bg);
             color: var(--text);
-            margin: 0; padding: 0; height: 100vh; display: flex;
-            overflow: hidden; user-select: none;
-        }
-        
-        /* --- Sidebar --- */
-        .sidebar {
-            width: 300px; /* Compact sidebar */
-            background: var(--panel);
-            border-right: 1px solid var(--border);
-            display: flex; flex-direction: column; 
-            padding: 15px; gap: 12px;
-            box-shadow: 2px 0 10px rgba(0,0,0,0.3);
-            z-index: 10; height: 100vh; 
-            box-sizing: border-box; overflow-y: auto;
-        }
-        .sidebar::-webkit-scrollbar { width: 8px; }
-        .sidebar::-webkit-scrollbar-track { background: #252526; }
-        .sidebar::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
-
-        h3 { margin: 0 0 6px 0; color: #fff; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
-        
-        .hint { 
-            font-size: 11px; color: #bbb; margin-bottom: 6px; line-height: 1.4; 
-            background: #2b2b2b; padding: 8px; border-radius: 4px; border: 1px solid #444;
-        }
-        .cmd-block {
-            background: #000; color: #ce9178; padding: 4px 8px; border-radius: 3px; font-family: monospace; display: block; margin-top: 5px; font-weight: bold; border: 1px solid #444;
-        }
-
-        textarea#inputData {
-            background: #111; color: #9cdcfe; border: 1px solid var(--border);
-            padding: 8px; height: 60px; min-height: 60px; 
-            font-family: monospace; font-size: 11px;
-            white-space: pre; resize: vertical; width: 100%; box-sizing: border-box;
-        }
-        
-        button.btn-action {
-            background: #007acc; color: white; border: none; padding: 8px;
-            cursor: pointer; font-weight: bold; border-radius: 2px; font-size: 12px; width: 100%;
-        }
-        button.btn-action:hover { background: #0062a3; }
-        
-        button.btn-copy { background: #333; border: 1px solid #555; color: #ccc; margin-bottom: 5px; margin-top: auto; }
-        button.btn-copy:hover { background: #444; }
-
-        /* --- Calculator Section --- */
-        .calc-box {
-            background: #2d2d30; border: 1px solid #444; padding: 10px; border-radius: 4px;
-        }
-        .calc-row { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 13px; }
-        .calc-val { font-weight: bold; color: #fff; }
-        .calc-input { 
-            width: 50px; background: #111; border: 1px solid #555; color: #fff; text-align: center; 
-        }
-        .calc-result { 
-            margin-top: 10px; padding-top: 10px; border-top: 1px dashed #555; 
-            font-weight: bold; text-align: center; font-size: 14px;
-        }
-        .res-ok { color: #4caf50; }
-        .res-warn { color: #ff9800; }
-        .res-crit { color: #f44336; }
-
-        /* --- Palette --- */
-        .palette-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-        .palette-item {
-            display: flex; align-items: center; gap: 10px; padding: 6px 10px;
-            cursor: pointer; font-size: 12px; background: #333; border-radius: 4px;
-            border: 1px solid transparent; transition: all 0.1s;
-        }
-        .palette-item:hover { background: #3e3e42; transform: translateY(-1px); }
-        .palette-item.active { background: #444; border-color: #fff; }
-        .swatch { width: 12px; height: 12px; border-radius: 50%; }
-
-        /* --- Output Box --- */
-        .output-wrapper { display: flex; flex-direction: column; flex-grow: 1; min-height: 200px; }
-        .output-box {
-            font-family: monospace; font-size: 12px; color: #aaa; white-space: pre-wrap;
-            background: #111; padding: 10px; border: 1px solid var(--border);
-            height: 100%; overflow-y: auto; box-sizing: border-box;
-        }
-
-        /* --- Canvas --- */
-        .main-view {
-            flex-grow: 1; overflow-y: auto; padding: 0;
-            background-color: #181818;
-            background-image: radial-gradient(#2a2a2a 1px, transparent 1px);
-            background-size: 20px 20px;
-            display: flex; flex-direction: column; align-items: stretch;
-        }
-
-        /* Header */
-        .page-header {
-            background: linear-gradient(135deg, #1e1e1e 0%, #2d2d30 100%);
-            border-bottom: 2px solid #007acc;
-            padding: 20px 40px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-            position: sticky; top: 0; z-index: 100;
-        }
-        .page-header h1 {
-            margin: 0 0 5px 0;
-            font-size: 24px;
-            color: #fff;
+            height: 100vh;
+            overflow: hidden;
             display: flex;
-            align-items: center;
-            gap: 15px;
         }
-        .header-badge {
-            font-size: 12px;
-            background: #007acc;
-            padding: 4px 10px;
-            border-radius: 3px;
-            font-weight: normal;
-        }
-        .page-header .subtitle {
-            font-size: 13px;
-            color: #888;
-            margin: 0;
-        }
-
-        /* Dashboard */
-        .dashboard {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            padding: 20px 40px;
-            background: #1e1e1e;
-            border-bottom: 1px solid #333;
-        }
-        .dashboard-card {
-            background: #2d2d30;
-            padding: 15px;
-            border-radius: 6px;
-            border: 1px solid #444;
-            transition: all 0.2s;
-        }
-        .dashboard-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            border-color: #007acc;
-        }
-        .dashboard-card-label {
-            font-size: 11px;
-            color: #888;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 8px;
-        }
-        .dashboard-card-value {
-            font-size: 28px;
-            font-weight: bold;
-            color: #fff;
-            margin-bottom: 5px;
-        }
-        .dashboard-card-info {
-            font-size: 11px;
-            color: #aaa;
-        }
-        .dashboard-card.highlight {
-            border: 2px solid #00bcf2;
-            background: rgba(0, 188, 242, 0.1);
-        }
-        .dashboard-card.highlight .dashboard-card-value {
-            color: #00bcf2;
-        }
-
-        /* Content wrapper */
-        .content-wrapper {
-            padding: 30px;
-            flex-grow: 1;
+        
+        /* Sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--panel);
+            border-right: 1px solid var(--panel-border);
             display: flex;
             flex-direction: column;
-            gap: 40px;
+            transition: width 0.3s ease, transform 0.3s ease;
+            position: relative;
+            z-index: 100;
+            height: 100vh;
+            overflow: hidden;
         }
         
-        .map-section { width: 100%; }
-        .map-title {
-            font-size: 18px; font-weight: bold; color: #fff; 
-            border-bottom: 2px solid #444; padding-bottom: 8px; margin-bottom: 20px;
-            display: flex; justify-content: space-between; align-items: center;
+        .sidebar.collapsed {
+            width: 0;
+            border-right: none;
         }
-        .instance-tag { background: #333; padding: 2px 8px; border-radius: 4px; font-size: 12px; color: #aaa; font-weight: normal; }
-
-        /* --- Hierarchy --- */
-        .hierarchy-box { margin-bottom: 15px; border-radius: 4px; position: relative; }
-        .box-label {
-            position: absolute; top: -10px; left: 15px; padding: 0 6px; font-size: 11px; font-weight: bold;
-            cursor: pointer; border-radius: 2px; z-index: 5; transition: all 0.2s;
+        
+        .sidebar.collapsed .sidebar-content {
+            opacity: 0;
+            pointer-events: none;
         }
-        .socket-box { border: 1px solid var(--socket-border); padding: 25px 15px 15px 15px; margin-bottom: 0; }
-        .socket-label { background: var(--bg); color: var(--socket-border); border: 1px solid var(--socket-border); font-size: 12px; }
-
-        .numa-box { 
-            border: 1px solid var(--numa-border); padding: 25px 15px 15px 15px; 
-            display: flex; flex-wrap: wrap; gap: 20px; background: rgba(197, 134, 192, 0.02); 
+        
+        .sidebar-content {
+            padding: 12px;
+            overflow-y: auto;
+            flex: 1;
+            transition: opacity 0.2s;
         }
-        .numa-label { background: var(--bg); color: var(--numa-border); border: 1px solid var(--numa-border); }
-
-        .numa-box.is-network-node {
-            border: 2px solid var(--net-numa-border); background: rgba(0, 188, 242, 0.08); box-shadow: 0 0 15px rgba(0, 188, 242, 0.15); 
+        
+        .sidebar-toggle {
+            position: absolute;
+            right: -28px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 28px;
+            height: 60px;
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-left: none;
+            border-radius: 0 6px 6px 0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent);
+            font-size: 14px;
+            transition: all 0.2s;
+            z-index: 101;
         }
-        .numa-box.is-network-node .numa-label {
-            color: var(--net-numa-border); border-color: var(--net-numa-border); background: #181818; font-weight: 900;
+        
+        .sidebar-toggle:hover {
+            background: #1a1a2e;
+            color: #fff;
         }
-
-        .nic-badge {
-            display: inline-block; background: var(--net-badge-bg); color: var(--net-badge-text);
-            font-size: 10px; padding: 3px 8px; border-radius: 3px; margin-left: 10px;
-            position: absolute; top: -12px; right: 20px; font-weight: bold;
-            box-shadow: 0 0 8px rgba(0,120,212, 0.5); animation: pulse 2s infinite; z-index: 6;
+        
+        .sidebar.collapsed .sidebar-toggle {
+            right: -28px;
         }
-        @keyframes pulse { 0% { opacity: 0.8; } 50% { opacity: 1; text-shadow: 0 0 5px white; } 100% { opacity: 0.8; } }
-
-        .l3-box {
-            border: 1px dashed var(--l3-border); background: var(--l3-bg);
-            padding: 30px 10px 10px 10px; display: flex; flex-wrap: wrap; gap: 6px; width: var(--l3-width); align-content: flex-start;
+        
+        .section {
+            margin-bottom: 15px;
         }
-        .l3-label { 
-            top: -10px; left: 50%; transform: translateX(-50%);
-            background: var(--bg); color: var(--l3-border); border: 1px solid var(--l3-border); white-space: nowrap;
+        
+        .section-title {
             font-size: 10px;
-        }
-
-        /* --- CORE STYLES --- */
-        .core {
-            width: var(--core-size); height: var(--core-size);
-            background: #252526; border: 1px solid #555;
-            display: flex; flex-direction: column; justify-content: flex-start; align-items: center;
-            cursor: crosshair; position: relative; padding-top: 10px; box-sizing: border-box;
-        }
-        .core.is-isolated { opacity: 0.4; }
-        .core.is-ghost {
-            opacity: 0.5;
-            background: repeating-linear-gradient(45deg, #2a2a2a, #2a2a2a 5px, #3a3a3a 5px, #3a3a3a 10px);
-            border: 1px dashed #666; color: #777;
-        }
-        .core:hover { border-color: #fff; z-index: 100; box-shadow: 0 0 8px #fff; opacity: 1;}
-        .core-num { 
-            font-size: var(--core-font); 
-            font-weight: bold; 
-            color: #fff; 
-            z-index: 2; 
-            text-shadow: 0 0 6px black, 1px 1px 2px black;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--accent);
+            margin-bottom: 8px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid var(--panel-border);
         }
         
-        /* LOAD BAR inside Core */
-        .load-bar-container {
-            position: absolute; bottom: 4px; left: 4px; right: 4px; height: 6px;
-            background: #111; border-radius: 2px; overflow: hidden;
+        textarea {
+            width: 100%;
+            background: #050508;
+            border: 1px solid var(--panel-border);
+            color: #9cdcfe;
+            padding: 8px;
+            font-family: inherit;
+            font-size: 10px;
+            resize: vertical;
+            min-height: 50px;
+            max-height: 120px;
         }
-        .load-bar-fill {
-            height: 100%; width: 0%; transition: width 0.5s;
+        
+        textarea:focus {
+            outline: 1px solid var(--accent);
         }
-        .load-text {
-            position: absolute; bottom: 12px; font-size: 10px; color: #fff; width: 100%; text-align: center;
-            text-shadow: 0 0 4px black, 1px 1px 2px black;
+        
+        .btn {
+            width: 100%;
+            padding: 8px 12px;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 600;
+            transition: all 0.2s;
+            margin-top: 6px;
         }
-
-        /* IRQ Badge on Core */
-        .irq-badge {
-            position: absolute; top: 2px; right: 2px;
-            background: #d500f9; color: #fff; font-size: 8px; font-weight: bold;
-            padding: 1px 3px; border-radius: 2px; z-index: 5;
-            box-shadow: 0 0 4px rgba(213, 0, 249, 0.8);
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%);
+            color: #000;
         }
-
+        
+        .btn-primary:hover {
+            filter: brightness(1.1);
+            transform: translateY(-1px);
+        }
+        
+        .btn-secondary {
+            background: #1a1a2e;
+            color: var(--text);
+            border: 1px solid var(--panel-border);
+        }
+        
+        .btn-secondary:hover {
+            background: #252540;
+        }
+        
+        /* Palette */
+        .palette {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+        }
+        
+        .palette-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 8px;
+            background: #111118;
+            border: 1px solid transparent;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 10px;
+            transition: all 0.15s;
+        }
+        
+        .palette-item:hover {
+            background: #1a1a28;
+            transform: translateX(2px);
+        }
+        
+        .palette-item.active {
+            border-color: var(--accent);
+            background: rgba(0, 212, 255, 0.1);
+        }
+        
+        .palette-swatch {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            flex-shrink: 0;
+        }
+        
+        /* Output box */
+        .output-box {
+            background: #050508;
+            border: 1px solid var(--panel-border);
+            padding: 8px;
+            font-size: 10px;
+            color: #888;
+            max-height: 150px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        /* Main Area */
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        /* Tabs */
+        .tabs {
+            display: flex;
+            background: var(--panel);
+            border-bottom: 1px solid var(--panel-border);
+            padding: 0 20px;
+        }
+        
+        .tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            font-size: 12px;
+            color: var(--text-dim);
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .tab:hover {
+            color: var(--text);
+            background: rgba(255,255,255,0.02);
+        }
+        
+        .tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+        
+        /* Header */
+        .header {
+            background: linear-gradient(180deg, #0d0d18 0%, var(--bg) 100%);
+            padding: 15px 25px;
+            border-bottom: 1px solid var(--panel-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header-left h1 {
+            font-size: 16px;
+            font-weight: 400;
+            color: #fff;
+            letter-spacing: 2px;
+        }
+        
+        .header-left h1 span {
+            color: var(--accent);
+        }
+        
+        .header-left .subtitle {
+            font-size: 10px;
+            color: var(--text-dim);
+            margin-top: 2px;
+        }
+        
+        .header-stats {
+            display: flex;
+            gap: 25px;
+        }
+        
+        .stat {
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #fff;
+        }
+        
+        .stat-value.highlight {
+            color: var(--numa-net);
+        }
+        
+        .stat-label {
+            font-size: 9px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        /* Canvas */
+        .canvas {
+            flex: 1;
+            overflow: auto;
+            padding: 20px;
+            background: 
+                radial-gradient(circle at 50% 50%, rgba(0,212,255,0.03) 0%, transparent 50%),
+                linear-gradient(90deg, rgba(26,26,46,0.3) 1px, transparent 1px),
+                linear-gradient(rgba(26,26,46,0.3) 1px, transparent 1px);
+            background-size: 100% 100%, 20px 20px, 20px 20px;
+        }
+        
+        .canvas-empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-dim);
+            font-size: 14px;
+        }
+        
+        /* Blueprint Layout */
+        .blueprint {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .sockets-row {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        /* Socket */
+        .socket {
+            background: rgba(10, 10, 15, 0.8);
+            border: 2px solid var(--socket0);
+            padding: 12px;
+            position: relative;
+            min-width: 320px;
+        }
+        
+        .socket[data-socket="1"] {
+            border-color: var(--socket1);
+        }
+        
+        .socket-label {
+            position: absolute;
+            top: -10px;
+            left: 15px;
+            background: var(--bg);
+            padding: 2px 10px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            color: var(--socket0);
+        }
+        
+        .socket[data-socket="1"] .socket-label {
+            color: var(--socket1);
+        }
+        
+        .socket-content {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        /* NUMA */
+        .numa {
+            background: rgba(197, 134, 192, 0.03);
+            border: 1px dashed var(--numa);
+            padding: 10px;
+            position: relative;
+            flex: 1;
+            min-width: 145px;
+        }
+        
+        .numa.is-network {
+            border: 2px solid var(--numa-net);
+            background: rgba(255, 215, 0, 0.05);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.1);
+        }
+        
+        .numa-label {
+            position: absolute;
+            top: -8px;
+            left: 10px;
+            background: var(--bg);
+            padding: 1px 8px;
+            font-size: 9px;
+            font-weight: 600;
+            color: var(--numa);
+        }
+        
+        .numa.is-network .numa-label {
+            color: var(--numa-net);
+            background: #0a0a0f;
+        }
+        
+        .network-badge {
+            position: absolute;
+            top: -8px;
+            right: 10px;
+            background: var(--numa-net);
+            color: #000;
+            padding: 1px 6px;
+            font-size: 8px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+        
+        /* L3 Cache */
+        .l3 {
+            background: rgba(78, 201, 176, 0.03);
+            border: 1px dotted var(--l3);
+            padding: 8px;
+            margin-top: 8px;
+            position: relative;
+        }
+        
+        .l3-label {
+            position: absolute;
+            top: -6px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg);
+            padding: 0 6px;
+            font-size: 8px;
+            color: var(--l3);
+            white-space: nowrap;
+        }
+        
+        .cores-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px;
+            margin-top: 4px;
+        }
+        
+        /* Core */
+        .core {
+            width: var(--core-size);
+            height: var(--core-size);
+            background: #151520;
+            border: 1px solid #333;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            font-weight: 700;
+            color: #555;
+            cursor: crosshair;
+            position: relative;
+            transition: all 0.1s;
+            user-select: none;
+        }
+        
+        .core:hover {
+            border-color: #fff;
+            z-index: 10;
+            transform: scale(1.15);
+            box-shadow: 0 0 10px rgba(255,255,255,0.3);
+        }
+        
+        .core.has-role {
+            color: #fff;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+        }
+        
+        .core .load-bar {
+            position: absolute;
+            bottom: 1px;
+            left: 1px;
+            right: 1px;
+            height: 3px;
+            background: #0a0a0f;
+            overflow: hidden;
+        }
+        
+        .core .load-fill {
+            height: 100%;
+            transition: width 0.3s;
+        }
+        
+        .core .irq-dot {
+            position: absolute;
+            top: 1px;
+            right: 1px;
+            width: 5px;
+            height: 5px;
+            background: var(--role-irq);
+            border-radius: 50%;
+            box-shadow: 0 0 4px var(--role-irq);
+        }
+        
+        /* Compare Mode */
+        .compare-container {
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+            height: 100%;
+        }
+        
+        .compare-panel {
+            flex: 1;
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: 4px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .compare-header {
+            padding: 12px 15px;
+            background: rgba(0,0,0,0.3);
+            border-bottom: 1px solid var(--panel-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .compare-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--accent);
+        }
+        
+        .compare-body {
+            flex: 1;
+            overflow: auto;
+            padding: 15px;
+        }
+        
+        .compare-drop-zone {
+            border: 2px dashed var(--panel-border);
+            border-radius: 8px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .compare-drop-zone:hover {
+            border-color: var(--accent);
+            background: rgba(0,212,255,0.05);
+        }
+        
+        .compare-drop-zone.dragover {
+            border-color: var(--accent);
+            background: rgba(0,212,255,0.1);
+        }
+        
+        .drop-icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        
+        .drop-text {
+            font-size: 12px;
+            color: var(--text-dim);
+        }
+        
+        /* Compare diff markers */
+        .core.diff-added {
+            box-shadow: 0 0 0 2px #4caf50, 0 0 8px rgba(76,175,80,0.5);
+        }
+        
+        .core.diff-removed {
+            box-shadow: 0 0 0 2px #f44336, 0 0 8px rgba(244,67,54,0.5);
+        }
+        
+        .core.diff-changed {
+            box-shadow: 0 0 0 2px #ffeb3b, 0 0 8px rgba(255,235,59,0.5);
+        }
+        
+        /* Compare summary */
+        .compare-summary {
+            padding: 15px 20px;
+            background: var(--panel);
+            border-top: 1px solid var(--panel-border);
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+        }
+        
+        .summary-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+        
+        .summary-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+        }
+        
+        .summary-dot.added { background: #4caf50; }
+        .summary-dot.removed { background: #f44336; }
+        .summary-dot.changed { background: #ffeb3b; }
+        
         /* Tooltip */
         #tooltip {
-            position: fixed; display: none; background: rgba(25, 25, 25, 0.95);
-            border: 1px solid #555; padding: 10px; border-radius: 5px; color: #fff;
-            font-size: 13px; z-index: 1000; pointer-events: none;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5); white-space: nowrap; backdrop-filter: blur(2px);
+            position: fixed;
+            display: none;
+            background: rgba(13, 13, 21, 0.95);
+            border: 1px solid var(--panel-border);
+            padding: 10px 12px;
+            border-radius: 4px;
+            font-size: 11px;
+            z-index: 1000;
+            pointer-events: none;
+            max-width: 250px;
+            backdrop-filter: blur(8px);
         }
-        .tooltip-header { font-weight: bold; margin-bottom: 5px; color: #fff; border-bottom: 1px solid #444; padding-bottom: 3px;}
-        .tooltip-row { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
-        .tooltip-swatch { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;}
-        .tooltip-load { font-weight: bold; color: #fff; margin-bottom: 5px; font-size: 14px; }
-
+        
+        .tooltip-header {
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 6px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid var(--panel-border);
+        }
+        
+        .tooltip-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 3px;
+            color: #aaa;
+        }
+        
+        .tooltip-swatch {
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #444; }
+        
+        /* Validation */
+        .validation-box {
+            background: #050508;
+            border: 1px solid var(--panel-border);
+            padding: 8px;
+            font-size: 10px;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+        
+        .val-error { color: #f44336; }
+        .val-warn { color: #ff9800; }
+        .val-info { color: #2196f3; }
+        .val-ok { color: #4caf50; }
+        
+        /* Inter-socket bus animation */
+        @keyframes busFlow {
+            0% { stroke-dashoffset: 20; }
+            100% { stroke-dashoffset: 0; }
+        }
+        
+        .bus-line {
+            stroke-dasharray: 8, 4;
+            animation: busFlow 0.8s linear infinite;
+        }
     </style>
 </head>
 <body>
 
-<div class="sidebar">
-    <div>
-        <h3>1. Данные</h3>
-        <div class="hint">
-            Вставь полный вывод <code>cpu-map</code> (с mpstat):
-        </div>
-        <textarea id="inputData" placeholder="..."></textarea>
-        <button class="btn-action" onclick="render()">Построить карту</button>
+<!-- Sidebar -->
+<div class="sidebar" id="sidebar">
+    <div class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle Sidebar (Hotkey: [)">
+        <span id="toggleIcon">◀</span>
     </div>
     
-    <hr style="border: 0; border-top: 1px solid #333; width: 100%; margin: 10px 0;">
-    
-    <div>
-        <h3>2. Инструменты</h3>
-        <div id="palette" class="palette-grid"></div>
-    </div>
-
-    <hr style="border: 0; border-top: 1px solid #333; width: 100%; margin: 10px 0;">
-
-    <div class="output-wrapper">
-        <h3>3. Конфиг</h3>
-        <button class="btn-action btn-copy" onclick="copyConfig()">Скопировать</button>
-        <div class="output-box" id="output"></div>
-    </div>
-
-    <hr style="border: 0; border-top: 1px solid #333; width: 100%; margin: 10px 0;">
-
-    <div>
-        <h3>4. Сайзинг ОС</h3>
-        <div class="calc-box">
-            <div class="calc-row">
-                <span>Текущие ядра ОС:</span>
-                <span class="calc-val" id="calc-current-cores">-</span>
-            </div>
-            <div class="calc-row">
-                <span>Общая нагрузка:</span>
-                <span class="calc-val" id="calc-total-load">-</span>
-            </div>
-            <div class="calc-row" style="margin-top:10px; align-items:center;">
-                <span>Цель (кол-во ядер):</span>
-                <input type="number" id="calc-target-input" class="calc-input" value="3" min="1" onchange="calculateSizing()">
-            </div>
-            <div class="calc-result" id="calc-result-area">
-                Ожидание данных...
+    <div class="sidebar-content">
+        <!-- Data Input -->
+        <div class="section">
+            <div class="section-title">1. Input Data</div>
+            <textarea id="inputData" placeholder="Paste cpu-map.sh output here..."></textarea>
+            <button class="btn btn-primary" onclick="render()">Build Map</button>
+        </div>
+        
+        <!-- Tools -->
+        <div class="section">
+            <div class="section-title">2. Paint Tools</div>
+            <div class="palette" id="palette"></div>
+            <div style="margin-top: 8px; font-size: 9px; color: var(--text-dim);">
+                Click to paint • Ctrl+Click to erase
             </div>
         </div>
-    </div>
-
-    <hr style="border: 0; border-top: 1px solid #333; width: 100%; margin: 10px 0;">
-
-    <div>
-        <h3>5. Импорт/Экспорт</h3>
-        <button class="btn-action" onclick="exportConfig()" style="margin-bottom: 8px;">Экспорт JSON</button>
-        <button class="btn-action" onclick="handleImportClick()">Импорт JSON</button>
-    </div>
-
-    <hr style="border: 0; border-top: 1px solid #333; width: 100%; margin: 10px 0;">
-
-    <div>
-        <h3>6. Валидация</h3>
-        <button class="btn-action" onclick="validateConfig()" style="margin-bottom: 10px;">Проверить</button>
-        <div id="validation-output" style="font-size: 12px; padding: 10px; background: #111; border: 1px solid #333; border-radius: 4px; min-height: 60px;">
-            <div style="color: #666;">Нажмите "Проверить" для валидации конфигурации</div>
+        
+        <!-- Config Output -->
+        <div class="section">
+            <div class="section-title">3. Config Output</div>
+            <button class="btn btn-secondary" onclick="copyConfig()">📋 Copy Config</button>
+            <div class="output-box" id="output">Waiting for data...</div>
+        </div>
+        
+        <!-- Sizing Calculator -->
+        <div class="section">
+            <div class="section-title">4. OS Sizing</div>
+            <div style="display: flex; gap: 10px; font-size: 10px; margin-bottom: 6px;">
+                <div>OS Cores: <strong id="calc-cores">-</strong></div>
+                <div>Load: <strong id="calc-load">-</strong></div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 10px;">
+                <span>Target:</span>
+                <input type="number" id="calc-target" value="3" min="1" style="width: 50px; background: #111; border: 1px solid #333; color: #fff; padding: 4px; text-align: center;" onchange="calculateSizing()">
+                <span id="calc-result" style="color: #4caf50;">-</span>
+            </div>
+        </div>
+        
+        <!-- Import/Export -->
+        <div class="section">
+            <div class="section-title">5. Import / Export</div>
+            <button class="btn btn-secondary" onclick="exportConfig()">💾 Export JSON</button>
+            <button class="btn btn-secondary" onclick="importConfig()">📂 Import JSON</button>
+        </div>
+        
+        <!-- Validation -->
+        <div class="section">
+            <div class="section-title">6. Validation</div>
+            <button class="btn btn-secondary" onclick="validateConfig()">✓ Validate</button>
+            <div class="validation-box" id="validation-output">
+                <span style="color: var(--text-dim);">Click Validate to check</span>
+            </div>
         </div>
     </div>
 </div>
 
-<div class="main-view" id="canvas">
-    <div class="page-header" id="page-header" style="display:none;">
-        <h1>
-            <span id="header-title">HFT CPU Mapper</span>
-            <span class="header-badge" id="header-badge">v3.0</span>
-        </h1>
-        <p class="subtitle" id="header-subtitle">Waiting for data...</p>
+<!-- Main Area -->
+<div class="main">
+    <!-- Tabs -->
+    <div class="tabs">
+        <div class="tab active" data-tab="mapper" onclick="switchTab('mapper')">CPU Mapper</div>
+        <div class="tab" data-tab="compare" onclick="switchTab('compare')">Compare Configs</div>
     </div>
     
-    <div class="dashboard" id="dashboard" style="display:none;">
-        <div class="dashboard-card">
-            <div class="dashboard-card-label">Total Cores</div>
-            <div class="dashboard-card-value" id="dash-total-cores">-</div>
-            <div class="dashboard-card-info">Physical CPUs</div>
+    <!-- Mapper Tab -->
+    <div id="tab-mapper" class="tab-content" style="display: flex; flex-direction: column; flex: 1; overflow: hidden;">
+        <div class="header" id="header" style="display: none;">
+            <div class="header-left">
+                <h1>HFT <span>CPU MAPPER</span></h1>
+                <div class="subtitle" id="header-subtitle">Waiting for data...</div>
+            </div>
+            <div class="header-stats" id="header-stats"></div>
         </div>
-        <div class="dashboard-card">
-            <div class="dashboard-card-label">Used Cores</div>
-            <div class="dashboard-card-value" id="dash-used-cores">-</div>
-            <div class="dashboard-card-info">Allocated to roles</div>
-        </div>
-        <div class="dashboard-card">
-            <div class="dashboard-card-label">Free Cores</div>
-            <div class="dashboard-card-value" id="dash-free-cores">-</div>
-            <div class="dashboard-card-info">Available</div>
-        </div>
-        <div class="dashboard-card highlight" id="dash-network-card">
-            <div class="dashboard-card-label">Network NUMA</div>
-            <div class="dashboard-card-value" id="dash-network-numa">-</div>
-            <div class="dashboard-card-info" id="dash-network-info">Not detected</div>
-        </div>
-        <div class="dashboard-card">
-            <div class="dashboard-card-label">Isolated Cores</div>
-            <div class="dashboard-card-value" id="dash-isolated-cores">-</div>
-            <div class="dashboard-card-info">System isolated</div>
-        </div>
-        <div class="dashboard-card">
-            <div class="dashboard-card-label">Avg Load</div>
-            <div class="dashboard-card-value" id="dash-avg-load">-</div>
-            <div class="dashboard-card-info">Across all cores</div>
+        <div class="canvas" id="canvas">
+            <div class="canvas-empty">← Paste cpu-map.sh output and click "Build Map"</div>
         </div>
     </div>
     
-    <div class="content-wrapper" id="content-wrapper">
-        <div style="color:#555; margin-top:100px; text-align:center; font-size:1.4em;">
-            &larr; Жду данные...
+    <!-- Compare Tab -->
+    <div id="tab-compare" class="tab-content" style="display: none; flex-direction: column; flex: 1; overflow: hidden;">
+        <div class="compare-container">
+            <!-- Old Config -->
+            <div class="compare-panel">
+                <div class="compare-header">
+                    <div class="compare-title">OLD CONFIG</div>
+                    <button class="btn btn-secondary" style="width: auto; margin: 0; padding: 4px 10px; font-size: 10px;" onclick="clearCompare('old')">Clear</button>
+                </div>
+                <div class="compare-body" id="compare-old-body">
+                    <div class="compare-drop-zone" id="drop-old" onclick="loadCompareFile('old')">
+                        <div class="drop-icon">📁</div>
+                        <div class="drop-text">Drop JSON or click to select<br><strong>Old configuration</strong></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- New Config -->
+            <div class="compare-panel">
+                <div class="compare-header">
+                    <div class="compare-title">NEW CONFIG</div>
+                    <button class="btn btn-secondary" style="width: auto; margin: 0; padding: 4px 10px; font-size: 10px;" onclick="clearCompare('new')">Clear</button>
+                </div>
+                <div class="compare-body" id="compare-new-body">
+                    <div class="compare-drop-zone" id="drop-new" onclick="loadCompareFile('new')">
+                        <div class="drop-icon">📁</div>
+                        <div class="drop-text">Drop JSON or click to select<br><strong>New configuration</strong></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Compare Summary -->
+        <div class="compare-summary" id="compare-summary" style="display: none;">
+            <div class="summary-item">
+                <div class="summary-dot added"></div>
+                <span>Added: <strong id="diff-added">0</strong></span>
+            </div>
+            <div class="summary-item">
+                <div class="summary-dot removed"></div>
+                <span>Removed: <strong id="diff-removed">0</strong></span>
+            </div>
+            <div class="summary-item">
+                <div class="summary-dot changed"></div>
+                <span>Changed: <strong id="diff-changed">0</strong></span>
+            </div>
         </div>
     </div>
 </div>
 
+<!-- Tooltip -->
 <div id="tooltip"></div>
 
 <script>
-    const ROLES = [
-        { id: 'sys_os',   name: 'System (OS)',   color: '#607d8b' }, 
-        { id: 'net_irq',  name: 'net0 (IRQ)',    color: '#d500f9' }, 
-        { id: 'udp',      name: 'UDP',           color: '#ff6d00' }, 
-        { id: 'robot',    name: 'Robot',         color: '#e81123' },
-        { id: 'ar',       name: 'AR',            color: '#c2185b' }, 
-        { id: 'gateway',  name: 'Gateway',       color: '#107c10' },
-        { id: 'rf',       name: 'RF (Remote)',   color: '#008080' }, 
-        { id: 'click',    name: 'Clickhouse',    color: '#ffcc00' },
-        { id: 'formula',  name: 'Formula',       color: '#ffffff' },
-        { id: 'trash',    name: 'Trash',         color: '#8a6d3b' }
-    ];
+// ==================== CONSTANTS ====================
+const ROLES = [
+    { id: 'sys_os',   name: 'System (OS)',   color: '#607d8b' },
+    { id: 'net_irq',  name: 'IRQ (Net)',     color: '#d500f9' },
+    { id: 'udp',      name: 'UDP',           color: '#ff6d00' },
+    { id: 'robot',    name: 'Robot',         color: '#e81123' },
+    { id: 'ar',       name: 'AR',            color: '#c2185b' },
+    { id: 'gateway',  name: 'Gateway',       color: '#107c10' },
+    { id: 'rf',       name: 'RF (Remote)',   color: '#008080' },
+    { id: 'click',    name: 'Clickhouse',    color: '#ffcc00' },
+    { id: 'formula',  name: 'Formula',       color: '#ffffff' },
+    { id: 'trash',    name: 'Trash',         color: '#8a6d3b' }
+];
 
-    // Role mapping from bender-cpuinfo keys to role IDs
-    const ROLE_KEY_MAP = {
-        'AllRobotsThCPU': 'ar',
-        'ClickHouseCores': 'click',
-        'Formula': 'formula',
-        'GatewaysDefault': 'gateway',
-        'RemoteFormulaCPU': 'rf',
-        'RobotsDefault': 'robot',
-        'TrashCPU': 'trash',
-        'UdpReceiveCores': 'udp',
-        'UdpSendCores': 'udp'
-    };
+const ROLE_KEY_MAP = {
+    'AllRobotsThCPU': 'ar',
+    'ClickHouseCores': 'click',
+    'Formula': 'formula',
+    'GatewaysDefault': 'gateway',
+    'RemoteFormulaCPU': 'rf',
+    'RobotsDefault': 'robot',
+    'TrashCPU': 'trash',
+    'UdpReceiveCores': 'udp',
+    'UdpSendCores': 'udp'
+};
 
-    // Create role lookup map for O(1) access
-    const ROLES_BY_ID = {};
-    ROLES.forEach(r => ROLES_BY_ID[r.id] = r);
+const ROLES_BY_ID = {};
+ROLES.forEach(r => ROLES_BY_ID[r.id] = r);
 
-    let activeTool = ROLES[3];
-    let globalGeometry = {}; 
-    let coreNumaMap = {};
-    let netNumaNodes = new Set();
-    let serverName = '';
-    let instances = {}; 
-    let cpuLoadMap = {}; // { '0': 15.5, '1': 99.0 }
-    
-    let isMouseDown = false; 
-    const tooltipEl = document.getElementById('tooltip');
-    let numaDistances = {}; // NUMA distance matrix: {node: {otherNode: distance}}
-    let isolatedCores = new Set(); // Set of isolated core IDs
-    let coreIRQMap = {}; // { '0': ['123', '124'], '1': ['125'] } - IRQ numbers per core
-    let networkInterfaces = []; // Array of {name, numaNode, irqs: [{irq, cpus}]}
+// ==================== STATE ====================
+let activeTool = ROLES[3]; // Robot by default
+let globalGeometry = {};
+let coreNumaMap = {};
+let netNumaNodes = new Set();
+let serverName = '';
+let instances = {};
+let cpuLoadMap = {};
+let isolatedCores = new Set();
+let coreIRQMap = {};
+let networkInterfaces = [];
+let isMouseDown = false;
 
-    document.addEventListener('mouseup', () => { isMouseDown = false; });
-    
-    // Init Palette
-    const pContainer = document.getElementById('palette');
+// Compare state
+let compareOld = null;
+let compareNew = null;
+
+// ==================== INIT ====================
+document.addEventListener('DOMContentLoaded', () => {
+    initPalette();
+    initDragDrop();
+    document.addEventListener('mouseup', () => isMouseDown = false);
+    document.addEventListener('keydown', (e) => {
+        if (e.key === '[') toggleSidebar();
+    });
+});
+
+function initPalette() {
+    const container = document.getElementById('palette');
     ROLES.forEach(r => {
         const el = document.createElement('div');
-        el.className = 'palette-item';
-        if(r.id === activeTool.id) el.classList.add('active');
-        el.innerHTML = `<div class="swatch" style="background:${r.color}"></div><span>${r.name}</span>`;
-        el.onmousedown = () => {
+        el.className = 'palette-item' + (r.id === activeTool.id ? ' active' : '');
+        el.innerHTML = `<div class="palette-swatch" style="background:${r.color}"></div><span>${r.name}</span>`;
+        el.onclick = () => {
             activeTool = r;
             document.querySelectorAll('.palette-item').forEach(x => x.classList.remove('active'));
             el.classList.add('active');
         };
-        pContainer.appendChild(el);
+        container.appendChild(el);
     });
+}
 
-    function parseRangeStr(str) {
-        const res = new Set();
-        const parts = str.split(',');
-        parts.forEach(p => {
-            p = p.trim();
-            if(p.includes('-')) {
-                const [start, end] = p.split('-').map(x=>parseInt(x));
-                for(let i=start; i<=end; i++) res.add(i);
-            } else {
-                const val = parseInt(p);
-                if(!isNaN(val)) res.add(val);
+function initDragDrop() {
+    ['drop-old', 'drop-new'].forEach(id => {
+        const el = document.getElementById(id);
+        el.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            el.classList.add('dragover');
+        });
+        el.addEventListener('dragleave', () => el.classList.remove('dragover'));
+        el.addEventListener('drop', (e) => {
+            e.preventDefault();
+            el.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.name.endsWith('.json')) {
+                const target = id === 'drop-old' ? 'old' : 'new';
+                readCompareFile(file, target);
             }
         });
-        return Array.from(res);
-    }
+    });
+}
 
-    function addTag(instanceName, cpu, tag) {
-        if (!cpu) return;
-        if (!instances[instanceName]) instances[instanceName] = {};
-        if (!instances[instanceName][cpu]) instances[instanceName][cpu] = new Set();
-        instances[instanceName][cpu].add(tag);
-    }
+// ==================== SIDEBAR ====================
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const icon = document.getElementById('toggleIcon');
+    sidebar.classList.toggle('collapsed');
+    icon.textContent = sidebar.classList.contains('collapsed') ? '▶' : '◀';
+}
 
-    function parse(text) {
-        globalGeometry = {}; 
-        coreNumaMap = {};
-        netNumaNodes = new Set();
-        serverName = '';
-        instances = { 'Physical': {} }; 
-        cpuLoadMap = {}; // Reset Load
-        numaDistances = {}; // Reset NUMA distances
-        isolatedCores = new Set(); // Reset isolated cores
-        coreIRQMap = {}; // Reset IRQ map
-        networkInterfaces = []; // Reset network interfaces
+// ==================== TABS ====================
+function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelector(`.tab[data-tab="${tab}"]`).classList.add('active');
+    
+    document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+    document.getElementById(`tab-${tab}`).style.display = 'flex';
+}
 
-        const lines = text.split('\n');
-        let mode = 'none'; 
-        let currentInstance = null; 
-        let ignoreNetSection = false;
-        let currentInterface = null; // Track current network interface being parsed
-
-        for (let line of lines) {
-            line = line.trim();
-            if (!line) continue;
-
-            if (line.startsWith('=== Подключение к')) {
-                const parts = line.split(' ');
-                if (parts.length >= 4) serverName = parts[3].replace('.qb.loc', '');
-            }
-
-            if (line.includes('>>> 1. LSCPU')) { mode = 'lscpu'; continue; }
-            if (line.includes('>>> 2. NUMA TOPOLOGY')) { mode = 'numatopo'; continue; }
-            if (line.includes('>>> 3. ISOLATED CORES')) { mode = 'isolated'; continue; }
-            if (line.includes('>>> 4. NETWORK')) { mode = 'network'; continue; }
-            if (line.includes('>>> 5. RUNTIME CONFIG')) { mode = 'runtime'; continue; }
-            if (line.includes('>>> 6. TOP INTERRUPTS')) { mode = 'interrupts'; continue; }
-            if (line.includes('>>> 7. CPU LOAD')) { mode = 'cpuload'; continue; }
-
-            // --- 1. LSCPU ---
-            if (mode === 'lscpu') {
-                if (line.startsWith('CPU') || line.startsWith('#')) continue;
-                
-                // Parse CSV format: CPU,NODE,SOCKET,CORE,CACHE,?,?,?,L3,ONLINE
-                // Format can vary:
-                // - Old: CPU,NODE,SOCKET,CORE,CACHE,ONLINE (6 cols, CACHE = "0:1:2:3")
-                // - New: CPU,NODE,SOCKET,CORE,CACHE,?,?,?,L3,ONLINE (10 cols, CACHE empty, L3 at index 8)
-                const parts = line.split(',');
-                if (parts.length < 6) continue;
-                
-                const cpu = parts[0].trim();
-                const node = parts[1].trim();
-                const socket = parts[2].trim();
-                const cacheStr = parts[4].trim();
-                
-                // Determine online status and L3 based on format
-                let online, l3id;
-                if (parts.length >= 10) {
-                    // New format: L3 at index 8, ONLINE at index 9
-                    l3id = parts[8].trim() || 'U';
-                    online = parts[9].trim();
-                } else {
-                    // Old format: ONLINE at index 5, parse L3 from CACHE
-                    online = parts[5].trim();
-                    l3id = 'U';
-                    if (cacheStr.includes(':')) {
-                        const cParts = cacheStr.split(':');
-                        if (cParts.length >= 4) l3id = cParts[3];
-                    }
-                }
-                
-                if (online === 'no' || node === '-' || socket === '-') continue;
-
-                coreNumaMap[cpu] = node;
-                if(!globalGeometry[socket]) globalGeometry[socket] = {};
-                if(!globalGeometry[socket][node]) globalGeometry[socket][node] = {};
-                if(!globalGeometry[socket][node][l3id]) globalGeometry[socket][node][l3id] = [];
-                globalGeometry[socket][node][l3id].push(cpu);
-                
-                if (parseInt(cpu) === 0) addTag('Physical', cpu, 'sys_os');
-            }
-
-            // --- 2. NUMA TOPOLOGY ---
-            if (mode === 'numatopo') {
-                // Parse distance matrix from numactl -H output
-                // Example line: "node   0   1   2   3"
-                // or:           "  0:  10  21  21  21"
-                if (line.startsWith('node distances:')) continue;
-                
-                const distMatch = line.match(/^\s*(\d+):\s+([\d\s]+)$/);
-                if (distMatch) {
-                    const fromNode = distMatch[1];
-                    const distances = distMatch[2].trim().split(/\s+/);
-                    if (!numaDistances[fromNode]) numaDistances[fromNode] = {};
-                    distances.forEach((dist, idx) => {
-                        numaDistances[fromNode][idx.toString()] = parseInt(dist);
-                    });
-                }
-            }
-
-            // --- 3. ISOLATED CORES ---
-            if (mode === 'isolated') {
-                if (line !== 'none' && line.length > 0) {
-                    const cores = parseRangeStr(line);
-                    cores.forEach(c => isolatedCores.add(c.toString()));
-                }
-            }
-
-            // --- 4. NETWORK ---
-            if (mode === 'network') {
-                // Parse new network format
-                if (line.startsWith('Interface:')) {
-                    const ifaceMatch = line.match(/Interface:\s*(\S+)/);
-                    if (ifaceMatch) {
-                        currentInterface = {
-                            name: ifaceMatch[1],
-                            numaNode: null,
-                            irqs: []
-                        };
-                        networkInterfaces.push(currentInterface);
-                    }
-                }
-                
-                if (currentInterface && line.startsWith('NUMA Node:')) {
-                    const numaMatch = line.match(/NUMA Node:\s*(-?\d+)/);
-                    if (numaMatch) {
-                        const node = numaMatch[1];
-                        currentInterface.numaNode = node;
-                        if (node !== '-1') {
-                            netNumaNodes.add(node);
-                        }
-                    }
-                }
-                
-                if (currentInterface) {
-                    const irqMatch = line.match(/^\s*IRQ\s+(\d+):\s*([\d,\s-]+)/);
-                    if (irqMatch) {
-                        const irqNum = irqMatch[1];
-                        const cpuList = irqMatch[2].trim();
-                        const cores = parseRangeStr(cpuList);
-                        
-                        currentInterface.irqs.push({
-                            irq: irqNum,
-                            cpus: cores
-                        });
-                        
-                        // Mark these cores as IRQ handlers
-                        cores.forEach(c => {
-                            const cStr = c.toString();
-                            addTag('Physical', cStr, 'net_irq');
-                            if (!coreIRQMap[cStr]) coreIRQMap[cStr] = [];
-                            coreIRQMap[cStr].push(irqNum);
-                        });
-                    }
-                }
-                
-                // Also handle old format for compatibility
-                if (line.startsWith('net') && line.includes(':')) {
-                    const parts = line.split(':');
-                    if (parts.length >= 2) {
-                        const rangeStr = parts[1].trim();
-                        const cores = parseRangeStr(rangeStr);
-                        if (cores.length > 8) {
-                            const nodeCounts = {};
-                            cores.forEach(c => {
-                                const n = coreNumaMap[c];
-                                if (n !== undefined) nodeCounts[n] = (nodeCounts[n]||0) + 1;
-                            });
-                            let maxNode = -1; let maxCount = 0;
-                            for(const [n, count] of Object.entries(nodeCounts)) {
-                                if(count > maxCount) { maxCount = count; maxNode = n; }
-                            }
-                            if (maxNode !== -1) netNumaNodes.add(maxNode.toString());
-                        } else {
-                            if(!ignoreNetSection) cores.forEach(c => addTag('Physical', c.toString(), 'net_irq'));
-                        }
-                    }
-                }
-            }
-
-            // --- 5. RUNTIME ---
-            if (mode === 'runtime') {
-                const instanceMatch = line.match(/^(\w+):$/);
-                if (instanceMatch) {
-                    const name = instanceMatch[1];
-                    if(name !== 'Overview' && name !== 'Instance' && name !== 'Cpus') {
-                         currentInstance = name;
-                         if (!instances[currentInstance]) instances[currentInstance] = {};
-                    } else if (name === 'Overview' || name === 'Cpus') {
-                        // Both Overview and Cpus sections contain Physical/system-level CPU info
-                        currentInstance = 'Physical';
-                    }
-                }
-
-                // Parse lines like: {'cpu_id': 14, 'isolated': True, 'net_cpu': ['net0']}
-                const cpuDictMatch = line.match(/'cpu_id':\s*(\d+)/);
-                if (cpuDictMatch) {
-                    const cpuId = cpuDictMatch[1];
-                    
-                    // Check for net_cpu assignment
-                    if (line.includes("'net_cpu':")) {
-                        addTag('Physical', cpuId, 'net_irq');
-                        
-                        // Detect NUMA node from this core
-                        const n = coreNumaMap[cpuId];
-                        if (n !== undefined) {
-                            netNumaNodes.add(n.toString());
-                        }
-                    }
-                    
-                    // Check for isolated flag
-                    if (line.includes("'isolated': True")) {
-                        isolatedCores.add(cpuId);
-                    }
-                    
-                    // Parse instance-specific roles from the cpu_id line
-                    // Example: {'cpu_id': 2, 'isolated': True, 'TrashCPU': ['HUB7'], 'ClickHouseCores': ['HUB7']}
-                    // Use ROLE_KEY_MAP to avoid duplication
-                    Object.keys(ROLE_KEY_MAP).forEach(key => {
-                        const pattern = new RegExp(`'${key}':\\s*\\[([^\\]]+)\\]`);
-                        const match = line.match(pattern);
-                        if (match) {
-                            const instancesStr = match[1];
-                            const instanceNames = instancesStr.split(',').map(s => s.trim().replace(/['"]/g, ''));
-                            instanceNames.forEach(instName => {
-                                if (!instances[instName]) instances[instName] = {};
-                                addTag(instName, cpuId, ROLE_KEY_MAP[key]);
-                            });
-                        }
-                    });
-                }
-
-                const dictMatch = line.match(/'(\w+)':\s*\[([\d,\s]+)\]/);
-                if (dictMatch && currentInstance && currentInstance !== 'Physical') {
-                    const key = dictMatch[1];
-                    const coresStr = dictMatch[2];
-                    const cores = coresStr.split(',').map(x => x.trim());
-
-                    const roleId = ROLE_KEY_MAP[key];
-                    if (roleId) cores.forEach(c => addTag(currentInstance, c, roleId));
-                }
-
-                if (line.startsWith('System cpus:')) {
-                    const rangeStr = line.replace('System cpus:', '').trim();
-                    parseRangeStr(rangeStr).forEach(c => addTag('Physical', c.toString(), 'sys_os'));
-                }
-
-                if (line.includes('topology information')) ignoreNetSection = true;
-                if (line.includes('Network interfaces cpus')) ignoreNetSection = false;
-                
-                // Parse network interface CPU assignments from bender-cpuinfo
-                // Format: "net0: 2-3"
-                if (!ignoreNetSection && line.match(/^(net\d+|eni\d+|eth\d+|ens\d+|enp\d+):\s*([\d,\s-]+)$/)) {
-                    const netMatch = line.match(/^([^:]+):\s*([\d,\s-]+)$/);
-                    if (netMatch) {
-                        const ifaceName = netMatch[1].trim();
-                        const rangeStr = netMatch[2].trim();
-                        const cores = parseRangeStr(rangeStr);
-                        
-                        // Mark cores as net_irq
-                        cores.forEach(c => {
-                            const cStr = c.toString();
-                            addTag('Physical', cStr, 'net_irq');
-                        });
-                        
-                        // Detect NUMA node from the cores
-                        if (cores.length > 0) {
-                            const nodeCounts = {};
-                            cores.forEach(c => {
-                                const n = coreNumaMap[c.toString()];
-                                if (n !== undefined) nodeCounts[n] = (nodeCounts[n] || 0) + 1;
-                            });
-                            // Use the NUMA node with most cores
-                            let maxNode = null; 
-                            let maxCount = 0;
-                            for (const [n, count] of Object.entries(nodeCounts)) {
-                                if (count > maxCount) { 
-                                    maxCount = count; 
-                                    maxNode = n; 
-                                }
-                            }
-                            if (maxNode !== null) {
-                                netNumaNodes.add(maxNode.toString());
-                            }
-                        }
-                    }
-                }
-            }
-
-            // --- 7. CPU LOAD (MPSTAT) ---
-            if (mode === 'cpuload') {
-                // Ignore headers and summary lines
-                if (line.includes('CPU') || line.includes('all') || line.includes('Average')) continue;
-                
-                // Regex parser for mpstat output
-                // Format: [TIME] [AM/PM] CPU %usr %nice %sys %iowait %irq %soft %steal %guest %gnice %idle
-                const match = line.match(/(?:AM|PM)?\s*(\d+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)$/);
-
-                if (match) {
-                    const cpuId = match[1];
-                    const idle = parseFloat(match[11]); 
-                    cpuLoadMap[cpuId] = (100 - idle).toFixed(1);
-                }
-            }
-        }
-        return globalGeometry;
-    }
-
-    function applyTool(instanceName, cpu, forceAdd = true, isEraser = false) {
-        if (!instances[instanceName]) instances[instanceName] = {};
-        if (!instances[instanceName][cpu]) instances[instanceName][cpu] = new Set();
-        
-        if (isEraser) {
-            instances[instanceName][cpu].clear();
+// ==================== PARSING ====================
+function parseRangeStr(str) {
+    const res = new Set();
+    str.split(',').forEach(p => {
+        p = p.trim();
+        if (p.includes('-')) {
+            const [start, end] = p.split('-').map(x => parseInt(x));
+            for (let i = start; i <= end; i++) res.add(i);
         } else {
-            if (instances[instanceName][cpu].has(activeTool.id) && !forceAdd) {
-                instances[instanceName][cpu].delete(activeTool.id);
-            } else {
-                instances[instanceName][cpu].add(activeTool.id);
-            }
+            const val = parseInt(p);
+            if (!isNaN(val)) res.add(val);
         }
-        updateCoreVisual(instanceName, cpu);
-        updateStats();
-        calculateSizing();
-    }
+    });
+    return Array.from(res);
+}
 
-    function showTooltip(e, instanceName, cpu) {
-        let html = `<div class="tooltip-header">Core ${cpu}:</div>`;
-        
-        // Load
-        const load = cpuLoadMap[cpu];
-        if (load !== undefined) {
-            let color = '#4caf50';
-            if(load > 50) color = '#ffeb3b';
-            if(load > 80) color = '#f44336';
-            html += `<div class="tooltip-load" style="color:${color}">Load: ${load}%</div>`;
-        }
+function addTag(instanceName, cpu, tag) {
+    if (!cpu) return;
+    if (!instances[instanceName]) instances[instanceName] = {};
+    if (!instances[instanceName][cpu]) instances[instanceName][cpu] = new Set();
+    instances[instanceName][cpu].add(tag);
+}
 
-        // IRQ information
-        if (coreIRQMap[cpu] && coreIRQMap[cpu].length > 0) {
-            html += `<div style="margin-top:5px; border-top:1px dashed #444; padding-top:5px; font-size:11px; color:#d500f9;">`;
-            html += `<strong>IRQ:</strong> ${coreIRQMap[cpu].join(', ')}</div>`;
-        }
+function parse(text) {
+    globalGeometry = {};
+    coreNumaMap = {};
+    netNumaNodes = new Set();
+    serverName = '';
+    instances = { 'Physical': {} };
+    cpuLoadMap = {};
+    isolatedCores = new Set();
+    coreIRQMap = {};
+    networkInterfaces = [];
 
-        // Physical roles
-        const physTags = instances['Physical']?.[cpu];
-        if (physTags && physTags.size > 0) {
-            html += `<div style="margin-top:5px; border-top:1px dashed #444; padding-top:5px;">`;
-            html += `<strong>Physical Roles:</strong>`;
-            physTags.forEach(tid => {
-                 const r = ROLES_BY_ID[tid];
-                 if(r) html += `<div class="tooltip-row"><div class="tooltip-swatch" style="background:${r.color}"></div>${r.name}</div>`;
-            });
-            html += `</div>`;
-        }
+    const lines = text.split('\n');
+    let mode = 'none';
+    let currentInstance = null;
+    let ignoreNetSection = false;
+    let currentInterface = null;
 
-        // Instance assignments
-        const instKeys = Object.keys(instances).filter(k => k !== 'Physical');
-        let instanceAssignments = [];
-        instKeys.forEach(instName => {
-            if (instances[instName]?.[cpu]?.size > 0) {
-                const roles = Array.from(instances[instName][cpu]).map(roleId => {
-                    const r = ROLES_BY_ID[roleId];
-                    return r ? r.name : roleId;
-                }).join(', ');
-                instanceAssignments.push(`${instName}: ${roles}`);
-            }
-        });
-        if (instanceAssignments.length > 0) {
-            html += `<div style="margin-top:5px; border-top:1px dashed #444; padding-top:2px; font-size:11px; color:#4ec9b0;">`;
-            html += `<strong>Instances:</strong><br>`;
-            instanceAssignments.forEach(ia => {
-                html += `• ${ia}<br>`;
-            });
-            html += `</div>`;
+    for (let line of lines) {
+        line = line.trim();
+        if (!line) continue;
+
+        // Server name
+        if (line.startsWith('=== Подключение к')) {
+            const parts = line.split(' ');
+            if (parts.length >= 4) serverName = parts[3].replace('.qb.loc', '');
         }
 
-        tooltipEl.innerHTML = html;
-        tooltipEl.style.display = 'block';
-        moveTooltip(e);
-    }
+        // Mode switches
+        if (line.includes('>>> 1. LSCPU')) { mode = 'lscpu'; continue; }
+        if (line.includes('>>> 2. NUMA TOPOLOGY')) { mode = 'numatopo'; continue; }
+        if (line.includes('>>> 3. ISOLATED CORES')) { mode = 'isolated'; continue; }
+        if (line.includes('>>> 4. NETWORK')) { mode = 'network'; continue; }
+        if (line.includes('>>> 5. RUNTIME CONFIG')) { mode = 'runtime'; continue; }
+        if (line.includes('>>> 6. TOP INTERRUPTS')) { mode = 'interrupts'; continue; }
+        if (line.includes('>>> 7. CPU LOAD')) { mode = 'cpuload'; continue; }
 
-    function moveTooltip(e) {
-        tooltipEl.style.top = (e.clientY + 15) + 'px';
-        tooltipEl.style.left = (e.clientX + 15) + 'px';
-    }
-
-    function hideTooltip() { tooltipEl.style.display = 'none'; }
-
-    function updateCoreVisual(instanceName, cpu) {
-        const el = document.getElementById(`core-${instanceName}-${cpu}`);
-        if (!el) return;
-        const tags = instances[instanceName]?.[cpu] || new Set();
-        
-        // Reset classes and styles
-        el.className = 'core';
-        el.style.background = ''; // Reset background
-        el.style.opacity = '1'; // Reset opacity
-
-        // 1. Apply Role Color to Background with FULL OPACITY for current instance
-        if (tags.size > 0) {
-            // Get the primary role color using ROLES_BY_ID for O(1) lookup
-            const primaryRoleId = [...tags][0];
-            const primaryRole = ROLES_BY_ID[primaryRoleId];
-            if (primaryRole) {
-                // Apply SOLID background color (not just border)
-                el.style.background = primaryRole.color;
-                el.style.borderColor = primaryRole.color;
-                el.style.borderWidth = '2px';
-            }
+        // LSCPU parsing
+        if (mode === 'lscpu') {
+            if (line.startsWith('CPU') || line.startsWith('#')) continue;
+            const parts = line.split(',');
+            if (parts.length < 6) continue;
             
-            // If multiple roles, add a gradient
-            if (tags.size > 1) {
-                const colors = Array.from(tags).map(tid => {
-                    const r = ROLES_BY_ID[tid];
-                    return r ? r.color : '#fff';
-                });
-                // Create a multi-color gradient for multiple roles with FULL opacity
-                const gradient = colors.map((c, i) => {
-                    const start = (i / colors.length) * 100;
-                    const end = ((i + 1) / colors.length) * 100;
-                    return `${c} ${start}%, ${c} ${end}%`;
-                }).join(', ');
-                el.style.background = `linear-gradient(135deg, ${gradient})`;
-                el.style.borderColor = '#fff';
-                el.style.borderWidth = '2px';
-            }
-        } else {
-            // Check if core is used by other instances (ghost mode) OR Physical layer
-            const physicalTags = instances['Physical']?.[cpu] || new Set();
-            const allKeys = Object.keys(instances).filter(k => k !== instanceName && k !== 'Physical');
-            let ghostRole = null;
+            const cpu = parts[0].trim();
+            const node = parts[1].trim();
+            const socket = parts[2].trim();
+            const cacheStr = parts[4].trim();
             
-            // First check Physical layer for system/network roles
-            if (physicalTags.size > 0) {
-                const physicalRoleId = [...physicalTags][0];
-                ghostRole = ROLES_BY_ID[physicalRoleId];
+            let online, l3id;
+            if (parts.length >= 10) {
+                l3id = parts[8].trim() || 'U';
+                online = parts[9].trim();
             } else {
-                // Find first ghost role from other instances
-                for(const other of allKeys) {
-                    if(instances[other]?.[cpu]?.size > 0) {
-                        const ghostRoleId = [...instances[other][cpu]][0];
-                        ghostRole = ROLES_BY_ID[ghostRoleId];
-                        break; // Early exit once we find a ghost role
-                    }
+                online = parts[5].trim();
+                l3id = 'U';
+                if (cacheStr.includes(':')) {
+                    const cParts = cacheStr.split(':');
+                    if (cParts.length >= 4) l3id = cParts[3];
                 }
             }
             
-            if (ghostRole) {
-                el.classList.add('is-ghost');
-                // Show ghost role color with SEMI-TRANSPARENT background
-                el.style.background = ghostRole.color;
-                el.style.borderColor = ghostRole.color;
-                el.style.opacity = '0.35'; // Semi-transparent for cores not in current instance
-            } else {
-                el.classList.add('is-isolated'); 
-                el.style.border = '1px solid #555';
-                el.style.opacity = '0.35'; // Semi-transparent for unused cores
-            }
+            if (online === 'no' || node === '-' || socket === '-') continue;
+
+            coreNumaMap[cpu] = node;
+            if (!globalGeometry[socket]) globalGeometry[socket] = {};
+            if (!globalGeometry[socket][node]) globalGeometry[socket][node] = {};
+            if (!globalGeometry[socket][node][l3id]) globalGeometry[socket][node][l3id] = [];
+            globalGeometry[socket][node][l3id].push(cpu);
+            
+            if (parseInt(cpu) === 0) addTag('Physical', cpu, 'sys_os');
         }
 
-        // 2. Load Bar rendering
-        const load = parseFloat(cpuLoadMap[cpu] || 0);
-        let barColor = '#4caf50'; // Green
-        if (load > 50) barColor = '#ffeb3b'; // Yellow
-        if (load > 80) barColor = '#f44336'; // Red
-
-        const barContainer = document.createElement('div');
-        barContainer.className = 'load-bar-container';
-        const barFill = document.createElement('div');
-        barFill.className = 'load-bar-fill';
-        barFill.style.width = load + '%';
-        barFill.style.backgroundColor = barColor;
-        barContainer.appendChild(barFill);
-        
-        // Text inside core
-        const textDiv = document.createElement('div');
-        textDiv.className = 'core-num';
-        textDiv.innerText = cpu;
-
-        const loadText = document.createElement('div');
-        loadText.className = 'load-text';
-        loadText.innerText = load > 0 ? Math.round(load) + '%' : '';
-
-        // Role Indicators (dots at bottom)
-        const indicators = document.createElement('div');
-        indicators.className = 'indicators';
-        if (tags.size > 0) {
-            tags.forEach(roleId => {
-                const role = ROLES_BY_ID[roleId];
-                if (role) {
-                    const bar = document.createElement('div');
-                    bar.className = 'ind-bar';
-                    bar.style.backgroundColor = role.color;
-                    indicators.appendChild(bar);
-                }
-            });
-        }
-
-        el.innerHTML = '';
-        el.appendChild(textDiv);
-        if(load > 0) el.appendChild(loadText); // Show % text
-        el.appendChild(barContainer); // Show bar
-        el.appendChild(indicators);
-        
-        // 3. IRQ Badge
-        if (coreIRQMap[cpu] && coreIRQMap[cpu].length > 0) {
-            const irqBadge = document.createElement('div');
-            irqBadge.className = 'irq-badge';
-            irqBadge.innerText = 'IRQ';
-            irqBadge.title = `IRQs: ${coreIRQMap[cpu].join(', ')}`;
-            el.appendChild(irqBadge);
-        }
-    }
-
-    function updateDashboard() {
-        // Calculate metrics
-        const allCores = Object.keys(coreNumaMap);
-        const totalCores = allCores.length;
-        
-        // Count used cores (cores with any role assigned)
-        const physInstance = instances['Physical'];
-        let usedCores = 0;
-        if (physInstance) {
-            usedCores = Object.keys(physInstance).filter(cpu => 
-                physInstance[cpu] && physInstance[cpu].size > 0
-            ).length;
-        }
-        const freeCores = totalCores - usedCores;
-        
-        // Calculate average load
-        let totalLoad = 0;
-        let loadCount = 0;
-        allCores.forEach(cpu => {
-            const load = parseFloat(cpuLoadMap[cpu] || 0);
-            if (load > 0) {
-                totalLoad += load;
-                loadCount++;
-            }
-        });
-        const avgLoad = loadCount > 0 ? (totalLoad / loadCount).toFixed(1) : 0;
-        
-        // Update header
-        document.getElementById('page-header').style.display = 'block';
-        if (serverName) {
-            document.getElementById('header-title').innerText = `HFT CPU Mapper - ${serverName}`;
-            document.getElementById('header-subtitle').innerText = `Server: ${serverName}.qb.loc | Generated: ${new Date().toLocaleString()}`;
-        }
-        
-        // Update dashboard cards
-        document.getElementById('dashboard').style.display = 'grid';
-        document.getElementById('dash-total-cores').innerText = totalCores;
-        document.getElementById('dash-used-cores').innerText = usedCores;
-        document.getElementById('dash-free-cores').innerText = freeCores;
-        
-        // Network NUMA
-        if (netNumaNodes.size > 0) {
-            const nodes = Array.from(netNumaNodes).sort().join(', ');
-            document.getElementById('dash-network-numa').innerText = nodes;
-            const ifaces = networkInterfaces.map(iface => iface.name).join(', ');
-            document.getElementById('dash-network-info').innerText = ifaces || `Node ${nodes}`;
-        } else {
-            document.getElementById('dash-network-numa').innerText = 'N/A';
-            document.getElementById('dash-network-info').innerText = 'Not detected';
-        }
-        
         // Isolated cores
-        document.getElementById('dash-isolated-cores').innerText = isolatedCores.size;
-        
-        // Average load with color
-        document.getElementById('dash-avg-load').innerText = avgLoad + '%';
-        const loadEl = document.getElementById('dash-avg-load');
-        if (avgLoad > 80) loadEl.style.color = '#f44336';
-        else if (avgLoad > 50) loadEl.style.color = '#ffeb3b';
-        else loadEl.style.color = '#4caf50';
-    }
-
-    function render() {
-        const txt = document.getElementById('inputData').value;
-        const geom = parse(txt); 
-        const contentWrapper = document.getElementById('content-wrapper');
-        contentWrapper.innerHTML = '';
-
-        if(Object.keys(geom).length === 0) {
-            contentWrapper.innerHTML = '<div style="color:#888;">Нет данных CPU.</div>';
-            return;
+        if (mode === 'isolated') {
+            if (line !== 'none' && line.length > 0) {
+                parseRangeStr(line).forEach(c => isolatedCores.add(c.toString()));
+            }
         }
 
-        // Update dashboard
-        updateDashboard();
-
-        const instKeys = Object.keys(instances).filter(k => k !== 'Physical').sort();
-        
-        // If there are no instances, show Physical layer only
-        if (instKeys.length === 0) {
-            renderInstancePanel('Physical', geom, contentWrapper, true);
-        } else {
-            // Render a panel for each bender instance
-            instKeys.forEach(instName => {
-                renderInstancePanel(instName, geom, contentWrapper, false);
-            });
+        // Network interfaces
+        if (mode === 'network') {
+            if (line.startsWith('Interface:')) {
+                const ifaceMatch = line.match(/Interface:\s*(\S+)/);
+                if (ifaceMatch) {
+                    currentInterface = { name: ifaceMatch[1], numaNode: null, irqs: [] };
+                    networkInterfaces.push(currentInterface);
+                }
+            }
+            
+            if (currentInterface && line.startsWith('NUMA Node:')) {
+                const numaMatch = line.match(/NUMA Node:\s*(-?\d+)/);
+                if (numaMatch) {
+                    currentInterface.numaNode = numaMatch[1];
+                    if (numaMatch[1] !== '-1') netNumaNodes.add(numaMatch[1]);
+                }
+            }
+            
+            if (currentInterface) {
+                const irqMatch = line.match(/^\s*IRQ\s+(\d+):\s*([\d,\s-]+)/);
+                if (irqMatch) {
+                    const irqNum = irqMatch[1];
+                    const cores = parseRangeStr(irqMatch[2]);
+                    currentInterface.irqs.push({ irq: irqNum, cpus: cores });
+                    cores.forEach(c => {
+                        const cStr = c.toString();
+                        addTag('Physical', cStr, 'net_irq');
+                        if (!coreIRQMap[cStr]) coreIRQMap[cStr] = [];
+                        coreIRQMap[cStr].push(irqNum);
+                    });
+                }
+            }
         }
-        
-        updateStats();
-        calculateSizing();
-    }
-    
-    function renderInstancePanel(instanceName, geom, container, isPhysicalOnly) {
-        const section = document.createElement('div');
-        section.className = 'map-section';
-        
-        const title = document.createElement('div');
-        title.className = 'map-title';
-        
-        // Build title
-        let titleHtml = `<span>Instance: ${instanceName}</span>`;
-        if (isPhysicalOnly) {
-            titleHtml = '<span>CPU Topology (Physical View)</span>';
-        }
-        title.innerHTML = titleHtml;
-        section.appendChild(title);
 
-        Object.keys(geom).sort((a,b)=>a-b).forEach(s => {
-            const sBox = document.createElement('div');
-            sBox.className = 'hierarchy-box socket-box';
-            sBox.innerHTML = `<div class="box-label socket-label">SOCKET ${s}</div>`;
+        // Runtime config
+        if (mode === 'runtime') {
+            const instanceMatch = line.match(/^(\w+):$/);
+            if (instanceMatch) {
+                const name = instanceMatch[1];
+                if (name !== 'Overview' && name !== 'Instance' && name !== 'Cpus') {
+                    currentInstance = name;
+                    if (!instances[currentInstance]) instances[currentInstance] = {};
+                } else {
+                    currentInstance = 'Physical';
+                }
+            }
 
-            Object.keys(geom[s]).sort((a,b)=>a-b).forEach(n => {
-                const nBox = document.createElement('div');
-                let isNet = netNumaNodes.has(n);
-                nBox.className = 'hierarchy-box numa-box' + (isNet ? ' is-network-node' : '');
+            const cpuDictMatch = line.match(/'cpu_id':\s*(\d+)/);
+            if (cpuDictMatch) {
+                const cpuId = cpuDictMatch[1];
+                if (line.includes("'net_cpu':")) {
+                    addTag('Physical', cpuId, 'net_irq');
+                    const n = coreNumaMap[cpuId];
+                    if (n !== undefined) netNumaNodes.add(n.toString());
+                }
+                if (line.includes("'isolated': True")) isolatedCores.add(cpuId);
                 
-                // Build NUMA label with tier information
-                let numaLabelText = `NUMA ${n}`;
-                let numaLabelStyle = '';
-                
-                // Calculate tier if network node is known and distance data exists
-                if (netNumaNodes.size > 0 && Object.keys(numaDistances).length > 0) {
-                    const netNode = Array.from(netNumaNodes)[0]; // Use first network node as reference
-                    if (numaDistances[netNode] && numaDistances[netNode][n] !== undefined) {
-                        const distance = numaDistances[netNode][n];
-                        let tierColor = '#666'; // Gray - Remote
-                        let tierName = 'Remote';
-                        
-                        if (distance <= 10) {
-                            tierColor = '#ffd700'; // Gold - Same NUMA
-                            tierName = 'Same NUMA';
-                        } else if (distance <= 21) {
-                            tierColor = '#c0c0c0'; // Silver - Same Socket
-                            tierName = 'Same Socket';
-                        } else if (distance <= 31) {
-                            tierColor = '#cd7f32'; // Bronze - Cross Socket
-                            tierName = 'Cross Socket';
+                Object.keys(ROLE_KEY_MAP).forEach(key => {
+                    const pattern = new RegExp(`'${key}':\\s*\\[([^\\]]+)\\]`);
+                    const match = line.match(pattern);
+                    if (match) {
+                        const instNames = match[1].split(',').map(s => s.trim().replace(/['"]/g, ''));
+                        instNames.forEach(instName => {
+                            if (!instances[instName]) instances[instName] = {};
+                            addTag(instName, cpuId, ROLE_KEY_MAP[key]);
+                        });
+                    }
+                });
+            }
+
+            if (line.startsWith('System cpus:')) {
+                parseRangeStr(line.replace('System cpus:', '')).forEach(c => addTag('Physical', c.toString(), 'sys_os'));
+            }
+
+            if (line.includes('topology information')) ignoreNetSection = true;
+            if (line.includes('Network interfaces cpus')) ignoreNetSection = false;
+            
+            if (!ignoreNetSection && line.match(/^(net\d+|eni\d+|eth\d+|ens\d+|enp\d+):\s*([\d,\s-]+)$/)) {
+                const netMatch = line.match(/^([^:]+):\s*([\d,\s-]+)$/);
+                if (netMatch) {
+                    const cores = parseRangeStr(netMatch[2]);
+                    cores.forEach(c => addTag('Physical', c.toString(), 'net_irq'));
+                    if (cores.length > 0) {
+                        const nodeCounts = {};
+                        cores.forEach(c => {
+                            const n = coreNumaMap[c.toString()];
+                            if (n !== undefined) nodeCounts[n] = (nodeCounts[n] || 0) + 1;
+                        });
+                        let maxNode = null, maxCount = 0;
+                        for (const [n, count] of Object.entries(nodeCounts)) {
+                            if (count > maxCount) { maxCount = count; maxNode = n; }
                         }
-                        
-                        numaLabelStyle = `background-color: ${tierColor}; color: #000; font-weight: bold;`;
-                        numaLabelText += ` [${tierName}]`;
+                        if (maxNode !== null) netNumaNodes.add(maxNode.toString());
                     }
                 }
-                
-                let numaHeaderHtml = `<div class="box-label numa-label" style="${numaLabelStyle}">${numaLabelText}</div>`;
-                if (isNet) numaHeaderHtml += `<div class="nic-badge" title="Network Attached">NETWORK NODE</div>`;
-                nBox.innerHTML = numaHeaderHtml;
-
-                Object.keys(geom[s][n]).sort((a,b)=>parseInt(a)-parseInt(b)).forEach(c => {
-                    const l3Box = document.createElement('div');
-                    l3Box.className = 'hierarchy-box l3-box';
-                    l3Box.innerHTML = `<div class="box-label l3-label">L3 #${c}</div>`;
-
-                    geom[s][n][c].forEach(cpu => {
-                        const cell = document.createElement('div');
-                        cell.className = 'core is-isolated';
-                        cell.id = `core-${instanceName}-${cpu}`; 
-                        cell.dataset.cpu = cpu;
-                        cell.setAttribute('draggable', 'false'); 
-                        
-                        cell.onmousedown = (e) => {
-                            isMouseDown = true;
-                            const isEraser = e.ctrlKey || e.metaKey;
-                            applyTool(instanceName, cpu, false, isEraser); 
-                        };
-                        cell.onmouseenter = (e) => {
-                            if(isMouseDown) {
-                                const isEraser = e.ctrlKey || e.metaKey;
-                                applyTool(instanceName, cpu, true, isEraser);
-                            }
-                            showTooltip(e, instanceName, cpu);
-                        };
-                        cell.onmousemove = moveTooltip;
-                        cell.onmouseleave = hideTooltip;
-                        cell.ondragstart = () => false;
-
-                        l3Box.appendChild(cell);
-                    });
-                    nBox.appendChild(l3Box);
-                });
-                sBox.appendChild(nBox);
-            });
-            section.appendChild(sBox);
-        });
-        container.appendChild(section);
-
-        // Update visuals for all cores in this instance
-        // Get all CPU IDs from geometry
-        const allCpus = [];
-        Object.keys(geom).forEach(s => {
-            Object.keys(geom[s]).forEach(n => {
-                Object.keys(geom[s][n]).forEach(c => {
-                    allCpus.push(...geom[s][n][c]);
-                });
-            });
-        });
-        
-        allCpus.forEach(cpu => updateCoreVisual(instanceName, cpu));
-    }
-
-    // --- SIZING CALCULATOR ---
-    function calculateSizing() {
-        const phys = instances['Physical'];
-        if (!phys) return;
-
-        // 1. Identify System Cores
-        const sysCores = [];
-        for (const [cpu, tags] of Object.entries(phys)) {
-            if (tags.has('sys_os')) sysCores.push(cpu);
+            }
         }
 
-        // 2. Sum Load
-        let totalLoad = 0;
-        sysCores.forEach(c => {
-            totalLoad += parseFloat(cpuLoadMap[c] || 0);
-        });
-
-        // 3. Update UI
-        document.getElementById('calc-current-cores').innerText = sysCores.length;
-        document.getElementById('calc-total-load').innerText = Math.round(totalLoad) + '%';
-
-        const targetCount = parseInt(document.getElementById('calc-target-input').value) || 1;
-        
-        let avgLoad = 0;
-        if (targetCount > 0) avgLoad = totalLoad / targetCount;
-        
-        const resDiv = document.getElementById('calc-result-area');
-        let status = '';
-        let statusClass = '';
-
-        if (avgLoad < 50) { status = 'OK'; statusClass = 'res-ok'; }
-        else if (avgLoad < 80) { status = 'WARNING'; statusClass = 'res-warn'; }
-        else { status = 'OVERLOAD'; statusClass = 'res-crit'; }
-
-        resDiv.innerHTML = `Прогноз: <span class="${statusClass}">${Math.round(avgLoad)}%</span> / ядро<br><span style="font-size:12px; color:#aaa;">(${status})</span>`;
-    }
-
-    function updateStats() {
-        let txt = '';
-        if (serverName) txt += `# Config for ${serverName}\n`;
-        
-        const instKeys = Object.keys(instances).filter(k => k !== 'Physical').sort();
-        
-        if(instances['Physical']) {
-            txt += `\n### Physical / OS Layer ###\n`;
-            const phys = instances['Physical'];
-            const roles = {};
-            for(const [cpu, tags] of Object.entries(phys)) {
-                tags.forEach(t => {
-                    if(!roles[t]) roles[t] = [];
-                    roles[t].push(parseInt(cpu));
-                });
+        // CPU Load
+        if (mode === 'cpuload') {
+            if (line.includes('CPU') || line.includes('all') || line.includes('Average')) continue;
+            const match = line.match(/(?:AM|PM)?\s*(\d+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)$/);
+            if (match) {
+                cpuLoadMap[match[1]] = (100 - parseFloat(match[11])).toFixed(1);
             }
-            if(roles['sys_os']) txt += `System (OS): [${roles['sys_os'].sort((a,b)=>a-b).join(', ')}]\n`;
-            if(roles['net_irq']) txt += `IRQ (Net):   [${roles['net_irq'].sort((a,b)=>a-b).join(', ')}]\n`;
-        }
-
-        instKeys.forEach(inst => {
-            txt += `\n### Instance: ${inst} ###\n`;
-            const roleCores = {};
-            const robotPools = {};
-            const data = instances[inst];
-
-            for (const [cpu, tags] of Object.entries(data)) {
-                const cpuInt = parseInt(cpu);
-                tags.forEach(t => {
-                    if (t === 'robot') {
-                        const node = coreNumaMap[cpu] || 'U';
-                        if (!robotPools[node]) robotPools[node] = [];
-                        robotPools[node].push(cpuInt);
-                    } else {
-                        if(!roleCores[t]) roleCores[t] = [];
-                        roleCores[t].push(cpuInt);
-                    }
-                });
-            }
-
-            const sortedNodes = Object.keys(robotPools).sort((a,b)=>a-b);
-            sortedNodes.forEach(node => {
-                txt += `Robot_Pool_Node${node}: [${robotPools[node].sort((a,b)=>a-b).join(', ')}]\n`;
-            });
-
-            ROLES.forEach(role => {
-                if (role.id === 'robot') return;
-                if (roleCores[role.id] && roleCores[role.id].length > 0) {
-                    txt += `${role.name}: [${roleCores[role.id].sort((a,b)=>a-b).join(', ')}]\n`;
-                }
-            });
-        });
-
-        document.getElementById('output').innerText = txt;
-        
-        // Update dashboard when stats change
-        if (Object.keys(globalGeometry).length > 0) {
-            updateDashboard();
         }
     }
+    return globalGeometry;
+}
+
+// ==================== RENDERING ====================
+function render() {
+    const txt = document.getElementById('inputData').value;
+    const geom = parse(txt);
+    const canvas = document.getElementById('canvas');
     
-    function copyConfig() {
-        const txt = document.getElementById('output').innerText;
-        navigator.clipboard.writeText(txt).then(() => {
-            const btn = document.querySelector('.btn-copy');
-            const original = btn.innerText;
-            btn.innerText = "Скопировано!";
-            setTimeout(() => btn.innerText = original, 1000);
-        });
-    }
-
-    // Export configuration as JSON
-    function exportConfig() {
-        const config = {
-            version: "2.7",
-            serverName: serverName,
-            timestamp: new Date().toISOString(),
-            instances: {}
-        };
-
-        // Convert instances with Sets to arrays
-        Object.keys(instances).forEach(instName => {
-            config.instances[instName] = {};
-            Object.keys(instances[instName]).forEach(cpu => {
-                config.instances[instName][cpu] = Array.from(instances[instName][cpu]);
-            });
-        });
-
-        const json = JSON.stringify(config, null, 2);
-        const blob = new Blob([json], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
-        // Sanitize server name for filename
-        const sanitizedServerName = (serverName || 'unknown').replace(/[^a-zA-Z0-9-_]/g, '_');
-        a.href = url;
-        a.download = `cpu-config-${sanitizedServerName}-${timestamp}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-    }
-
-    // Import configuration from JSON
-    function importConfig(file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const config = JSON.parse(e.target.result);
-                
-                // Restore instances
-                instances = {};
-                Object.keys(config.instances).forEach(instName => {
-                    instances[instName] = {};
-                    Object.keys(config.instances[instName]).forEach(cpu => {
-                        instances[instName][cpu] = new Set(config.instances[instName][cpu]);
-                    });
-                });
-
-                // Restore server name if available
-                if (config.serverName) {
-                    serverName = config.serverName;
-                }
-
-                // Re-render
-                render();
-                
-                alert('Конфигурация успешно импортирована!');
-            } catch (err) {
-                alert('Ошибка при импорте конфигурации: ' + err.message);
-            }
-        };
-        reader.readAsText(file);
-    }
-
-    // Handle file selection for import
-    function handleImportClick() {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.json';
-        input.onchange = (e) => {
-            if (e.target.files.length > 0) {
-                importConfig(e.target.files[0]);
-            }
-        };
-        input.click();
-    }
-
-    // Validate configuration
-    function validateConfig() {
-    const errors = [];
-    const warnings = [];
-    const info = [];
-
-    // === ПРАВИЛА СОВМЕСТИМОСТИ ===
-    // Сервисы, которые ТРЕБУЮТ отдельное выделенное ядро
-    const DEDICATED_CORE_REQUIRED = ['gateway', 'robot', 'net_irq'];
-    
-    // Сервисы, которые ДОЛЖНЫ быть на сетевой NUMA ноде
-    const NETWORK_NUMA_REQUIRED = ['gateway', 'net_irq', 'ar', 'rf', 'trash', 'click', 'formula'];
-    
-    // Матрица ЗАПРЕЩЁННЫХ соседств (если на одном ядре)
-    const FORBIDDEN_PAIRS = [
-        ['ar', 'trash'],           // AR нельзя на Trash ядро
-        ['formula', 'trash'],      // Formula нельзя на Trash ядро
-        ['gateway', 'robot'],      // Gateway требует отдельное ядро
-        ['gateway', 'ar'],
-        ['gateway', 'rf'],
-        ['gateway', 'trash'],
-        ['gateway', 'click'],
-        ['gateway', 'udp'],
-        ['gateway', 'formula'],
-        ['gateway', 'net_irq'],
-        ['gateway', 'sys_os'],
-        ['robot', 'ar'],           // Robot требует отдельное ядро
-        ['robot', 'rf'],
-        ['robot', 'trash'],
-        ['robot', 'click'],
-        ['robot', 'udp'],
-        ['robot', 'formula'],
-        ['robot', 'net_irq'],
-        ['robot', 'sys_os'],
-        ['net_irq', 'ar'],         // IRQ требует отдельное ядро
-        ['net_irq', 'rf'],
-        ['net_irq', 'trash'],
-        ['net_irq', 'click'],
-        ['net_irq', 'udp'],
-        ['net_irq', 'formula'],
-        ['net_irq', 'sys_os'],
-    ];
-    
-    // Матрица РАЗРЕШЁННЫХ соседств
-    const ALLOWED_PAIRS = [
-        ['ar', 'rf'],              // AR + RF могут делить ядро
-        ['ar', 'formula'],         // AR + Formula могут соседствовать
-        ['rf', 'formula'],         // RF + Formula могут соседствовать
-        ['rf', 'trash'],           // RF + Trash допустимо
-        ['rf', 'click'],           // RF + ClickHouse допустимо
-        ['trash', 'click'],        // Trash + ClickHouse допустимо
-        ['trash', 'udp'],          // Trash + UDP допустимо (при низком трафике)
-    ];
-
-    // Целевая нагрузка
-    const TARGET_LOAD_CRITICAL = 20;  // Gateway, Robot - целевая ~20%
-    const TARGET_LOAD_WARNING = 50;
-    const TARGET_LOAD_CRITICAL_THRESHOLD = 80;
-
-    const physInstance = instances['Physical'];
-    if (!physInstance && Object.keys(instances).length === 0) {
-        document.getElementById('validation-output').innerHTML = '<div style="color: #aaa;">Нет данных для валидации</div>';
+    if (Object.keys(geom).length === 0) {
+        canvas.innerHTML = '<div class="canvas-empty">No CPU data found</div>';
         return;
     }
 
-    const netNodes = Array.from(netNumaNodes).map(n => n.toString());
+    updateHeader();
+    
+    // Build blueprint
+    let html = '<div class="blueprint">';
+    
+    // Group sockets in rows of 2
+    const sockets = Object.keys(geom).sort((a, b) => a - b);
+    for (let i = 0; i < sockets.length; i += 2) {
+        html += '<div class="sockets-row">';
+        for (let j = i; j < Math.min(i + 2, sockets.length); j++) {
+            html += renderSocket(sockets[j], geom[sockets[j]]);
+        }
+        html += '</div>';
+    }
+    
+    html += '</div>';
+    canvas.innerHTML = html;
+    
+    // Update all cores visual
+    Object.keys(coreNumaMap).forEach(cpu => updateCoreVisual('Physical', cpu));
+    
+    updateStats();
+    calculateSizing();
+}
 
-    // Helper:  проверить пару на запрет
-    function isForbiddenPair(role1, role2) {
-        return FORBIDDEN_PAIRS.some(([a, b]) => 
-            (a === role1 && b === role2) || (a === role2 && b === role1)
-        );
+function renderSocket(socketId, numaData) {
+    let html = `<div class="socket" data-socket="${socketId}">`;
+    html += `<div class="socket-label">SOCKET ${socketId}</div>`;
+    html += '<div class="socket-content">';
+    
+    Object.keys(numaData).sort((a, b) => a - b).forEach(numaId => {
+        const isNetwork = netNumaNodes.has(numaId);
+        html += `<div class="numa ${isNetwork ? 'is-network' : ''}" data-numa="${numaId}">`;
+        html += `<div class="numa-label">NUMA ${numaId}</div>`;
+        if (isNetwork) html += '<div class="network-badge">NET</div>';
+        
+        Object.keys(numaData[numaId]).sort((a, b) => parseInt(a) - parseInt(b)).forEach(l3Id => {
+            html += `<div class="l3">`;
+            html += `<div class="l3-label">L3 #${l3Id}</div>`;
+            html += '<div class="cores-grid">';
+            
+            numaData[numaId][l3Id].forEach(cpu => {
+                html += renderCore('Physical', cpu);
+            });
+            
+            html += '</div></div>';
+        });
+        
+        html += '</div>';
+    });
+    
+    html += '</div></div>';
+    return html;
+}
+
+function renderCore(instanceName, cpu) {
+    const load = parseFloat(cpuLoadMap[cpu] || 0);
+    let loadColor = '#4caf50';
+    if (load > 50) loadColor = '#ffeb3b';
+    if (load > 80) loadColor = '#f44336';
+    
+    const hasIRQ = coreIRQMap[cpu] && coreIRQMap[cpu].length > 0;
+    
+    return `
+        <div class="core" id="core-${instanceName}-${cpu}" data-cpu="${cpu}"
+             onmousedown="onCoreMouseDown(event, '${instanceName}', '${cpu}')"
+             onmouseenter="onCoreMouseEnter(event, '${instanceName}', '${cpu}')"
+             onmousemove="moveTooltip(event)"
+             onmouseleave="hideTooltip()">
+            ${cpu}
+            <div class="load-bar"><div class="load-fill" style="width:${load}%;background:${loadColor}"></div></div>
+            ${hasIRQ ? '<div class="irq-dot"></div>' : ''}
+        </div>
+    `;
+}
+
+function updateCoreVisual(instanceName, cpu) {
+    const el = document.getElementById(`core-${instanceName}-${cpu}`);
+    if (!el) return;
+    
+    const tags = instances[instanceName]?.[cpu] || new Set();
+    
+    el.classList.remove('has-role', 'diff-added', 'diff-removed', 'diff-changed');
+    el.style.background = '';
+    el.style.borderColor = '';
+    
+    if (tags.size > 0) {
+        el.classList.add('has-role');
+        const primaryRole = ROLES_BY_ID[[...tags][0]];
+        if (primaryRole) {
+            el.style.background = primaryRole.color;
+            el.style.borderColor = primaryRole.color;
+        }
+        
+        if (tags.size > 1) {
+            const colors = [...tags].map(t => ROLES_BY_ID[t]?.color || '#fff');
+            const gradient = colors.map((c, i) => `${c} ${(i/colors.length)*100}%, ${c} ${((i+1)/colors.length)*100}%`).join(',');
+            el.style.background = `linear-gradient(135deg, ${gradient})`;
+            el.style.borderColor = '#fff';
+        }
+    } else {
+        // Check physical layer for ghost roles
+        const physTags = instances['Physical']?.[cpu] || new Set();
+        if (physTags.size > 0) {
+            const ghostRole = ROLES_BY_ID[[...physTags][0]];
+            if (ghostRole) {
+                el.style.background = ghostRole.color;
+                el.style.opacity = '0.35';
+            }
+        }
+    }
+}
+
+function updateHeader() {
+    document.getElementById('header').style.display = 'flex';
+    document.getElementById('header-subtitle').textContent = serverName ? 
+        `${serverName}.qb.loc | ${new Date().toLocaleString()}` : 'Ready';
+    
+    const allCores = Object.keys(coreNumaMap);
+    const usedCores = Object.keys(instances['Physical'] || {}).filter(cpu => 
+        instances['Physical'][cpu]?.size > 0
+    ).length;
+    
+    let totalLoad = 0, loadCount = 0;
+    allCores.forEach(cpu => {
+        const load = parseFloat(cpuLoadMap[cpu] || 0);
+        if (load > 0) { totalLoad += load; loadCount++; }
+    });
+    
+    const statsHtml = `
+        <div class="stat"><div class="stat-value">${allCores.length}</div><div class="stat-label">Total</div></div>
+        <div class="stat"><div class="stat-value">${usedCores}</div><div class="stat-label">Used</div></div>
+        <div class="stat"><div class="stat-value">${allCores.length - usedCores}</div><div class="stat-label">Free</div></div>
+        <div class="stat"><div class="stat-value highlight">${netNumaNodes.size > 0 ? [...netNumaNodes].join(',') : 'N/A'}</div><div class="stat-label">Net NUMA</div></div>
+        <div class="stat"><div class="stat-value">${loadCount > 0 ? (totalLoad/loadCount).toFixed(0) + '%' : '-'}</div><div class="stat-label">Avg Load</div></div>
+    `;
+    document.getElementById('header-stats').innerHTML = statsHtml;
+}
+
+// ==================== INTERACTIONS ====================
+function onCoreMouseDown(e, instanceName, cpu) {
+    isMouseDown = true;
+    const isEraser = e.ctrlKey || e.metaKey;
+    applyTool(instanceName, cpu, false, isEraser);
+}
+
+function onCoreMouseEnter(e, instanceName, cpu) {
+    if (isMouseDown) {
+        const isEraser = e.ctrlKey || e.metaKey;
+        applyTool(instanceName, cpu, true, isEraser);
+    }
+    showTooltip(e, instanceName, cpu);
+}
+
+function applyTool(instanceName, cpu, forceAdd, isEraser) {
+    if (!instances[instanceName]) instances[instanceName] = {};
+    if (!instances[instanceName][cpu]) instances[instanceName][cpu] = new Set();
+    
+    if (isEraser) {
+        instances[instanceName][cpu].clear();
+    } else {
+        if (instances[instanceName][cpu].has(activeTool.id) && !forceAdd) {
+            instances[instanceName][cpu].delete(activeTool.id);
+        } else {
+            instances[instanceName][cpu].add(activeTool.id);
+        }
+    }
+    
+    updateCoreVisual(instanceName, cpu);
+    updateStats();
+    calculateSizing();
+}
+
+// ==================== TOOLTIP ====================
+function showTooltip(e, instanceName, cpu) {
+    const tooltip = document.getElementById('tooltip');
+    const tags = instances[instanceName]?.[cpu] || new Set();
+    const load = cpuLoadMap[cpu];
+    
+    let html = `<div class="tooltip-header">Core ${cpu}</div>`;
+    
+    if (load !== undefined) {
+        let color = '#4caf50';
+        if (load > 50) color = '#ffeb3b';
+        if (load > 80) color = '#f44336';
+        html += `<div style="color:${color};font-weight:bold;margin-bottom:4px;">Load: ${load}%</div>`;
+    }
+    
+    if (coreIRQMap[cpu]?.length > 0) {
+        html += `<div style="color:#d500f9;font-size:10px;">IRQ: ${coreIRQMap[cpu].join(', ')}</div>`;
+    }
+    
+    if (tags.size > 0) {
+        html += '<div style="margin-top:4px;">';
+        tags.forEach(tid => {
+            const r = ROLES_BY_ID[tid];
+            if (r) html += `<div class="tooltip-row"><div class="tooltip-swatch" style="background:${r.color}"></div>${r.name}</div>`;
+        });
+        html += '</div>';
+    }
+    
+    tooltip.innerHTML = html;
+    tooltip.style.display = 'block';
+    moveTooltip(e);
+}
+
+function moveTooltip(e) {
+    const tooltip = document.getElementById('tooltip');
+    tooltip.style.top = (e.clientY + 15) + 'px';
+    tooltip.style.left = (e.clientX + 15) + 'px';
+}
+
+function hideTooltip() {
+    document.getElementById('tooltip').style.display = 'none';
+}
+
+// ==================== CONFIG OUTPUT ====================
+function updateStats() {
+    let txt = serverName ? `# ${serverName}\n` : '';
+    
+    const instKeys = Object.keys(instances).filter(k => k !== 'Physical').sort();
+    
+    if (instances['Physical']) {
+        txt += '\n### Physical ###\n';
+        const roles = {};
+        for (const [cpu, tags] of Object.entries(instances['Physical'])) {
+            tags.forEach(t => {
+                if (!roles[t]) roles[t] = [];
+                roles[t].push(parseInt(cpu));
+            });
+        }
+        if (roles['sys_os']) txt += `System: [${roles['sys_os'].sort((a,b)=>a-b).join(', ')}]\n`;
+        if (roles['net_irq']) txt += `IRQ:    [${roles['net_irq'].sort((a,b)=>a-b).join(', ')}]\n`;
     }
 
-    // Helper: получить название роли
-    function getRoleName(roleId) {
-        const role = ROLES.find(r => r.id === roleId);
-        return role ? role.name : roleId;
-    }
+    instKeys.forEach(inst => {
+        txt += `\n### ${inst} ###\n`;
+        const roleCores = {};
+        const data = instances[inst];
+        
+        for (const [cpu, tags] of Object.entries(data)) {
+            tags.forEach(t => {
+                if (!roleCores[t]) roleCores[t] = [];
+                roleCores[t].push(parseInt(cpu));
+            });
+        }
+        
+        ROLES.forEach(role => {
+            if (roleCores[role.id]?.length > 0) {
+                txt += `${role.name}: [${roleCores[role.id].sort((a,b)=>a-b).join(', ')}]\n`;
+            }
+        });
+    });
 
-    // === ПРОВЕРКА ВСЕХ ИНСТАНСОВ ===
+    document.getElementById('output').textContent = txt;
+}
+
+function copyConfig() {
+    navigator.clipboard.writeText(document.getElementById('output').textContent).then(() => {
+        const btn = event.target;
+        const orig = btn.textContent;
+        btn.textContent = '✓ Copied!';
+        setTimeout(() => btn.textContent = orig, 1000);
+    });
+}
+
+// ==================== SIZING CALCULATOR ====================
+function calculateSizing() {
+    const phys = instances['Physical'];
+    if (!phys) return;
+    
+    const sysCores = Object.entries(phys).filter(([cpu, tags]) => tags.has('sys_os')).map(([cpu]) => cpu);
+    let totalLoad = 0;
+    sysCores.forEach(c => totalLoad += parseFloat(cpuLoadMap[c] || 0));
+    
+    document.getElementById('calc-cores').textContent = sysCores.length;
+    document.getElementById('calc-load').textContent = Math.round(totalLoad) + '%';
+    
+    const target = parseInt(document.getElementById('calc-target').value) || 1;
+    const avgLoad = target > 0 ? totalLoad / target : 0;
+    
+    let status = 'OK', color = '#4caf50';
+    if (avgLoad >= 50) { status = 'WARN'; color = '#ff9800'; }
+    if (avgLoad >= 80) { status = 'CRIT'; color = '#f44336'; }
+    
+    document.getElementById('calc-result').innerHTML = `<span style="color:${color}">${Math.round(avgLoad)}% (${status})</span>`;
+}
+
+// ==================== IMPORT / EXPORT ====================
+function exportConfig() {
+    const config = {
+        version: "3.0",
+        serverName: serverName,
+        timestamp: new Date().toISOString(),
+        geometry: globalGeometry,
+        netNumaNodes: [...netNumaNodes],
+        instances: {}
+    };
+    
+    Object.keys(instances).forEach(instName => {
+        config.instances[instName] = {};
+        Object.keys(instances[instName]).forEach(cpu => {
+            config.instances[instName][cpu] = [...instances[instName][cpu]];
+        });
+    });
+    
+    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `cpu-config-${serverName || 'unknown'}-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+}
+
+function importConfig() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    const config = JSON.parse(ev.target.result);
+                    applyConfig(config);
+                    render();
+                    alert('Config imported!');
+                } catch (err) {
+                    alert('Error: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+    };
+    input.click();
+}
+
+function applyConfig(config) {
+    if (config.serverName) serverName = config.serverName;
+    if (config.geometry) globalGeometry = config.geometry;
+    if (config.netNumaNodes) netNumaNodes = new Set(config.netNumaNodes);
+    
+    instances = {};
+    Object.keys(config.instances).forEach(instName => {
+        instances[instName] = {};
+        Object.keys(config.instances[instName]).forEach(cpu => {
+            instances[instName][cpu] = new Set(config.instances[instName][cpu]);
+        });
+    });
+    
+    // Rebuild coreNumaMap from geometry
+    coreNumaMap = {};
+    Object.keys(globalGeometry).forEach(socket => {
+        Object.keys(globalGeometry[socket]).forEach(numa => {
+            Object.keys(globalGeometry[socket][numa]).forEach(l3 => {
+                globalGeometry[socket][numa][l3].forEach(cpu => {
+                    coreNumaMap[cpu] = numa;
+                });
+            });
+        });
+    });
+}
+
+// ==================== VALIDATION ====================
+function validateConfig() {
+    const errors = [], warnings = [], info = [];
+    const DEDICATED = ['gateway', 'robot', 'net_irq'];
+    const NET_REQUIRED = ['gateway', 'net_irq'];
+    const netNodes = [...netNumaNodes];
+    
     Object.keys(instances).forEach(instName => {
         const inst = instances[instName];
-        
         Object.keys(inst).forEach(cpu => {
             const tags = inst[cpu];
-            if (! tags || tags.size === 0) return;
+            if (!tags || tags.size === 0) return;
             
-            const tagsArray = Array.from(tags);
+            const tagsArr = [...tags];
             const load = parseFloat(cpuLoadMap[cpu] || 0);
-            const numaNode = coreNumaMap[cpu]?.toString();
-
-            // === 1. ПРОВЕРКА:  Сервисы требующие отдельное ядро ===
-            DEDICATED_CORE_REQUIRED. forEach(dedicatedRole => {
-                if (tags.has(dedicatedRole) && tags.size > 1) {
-                    const otherRoles = tagsArray.filter(t => t !== dedicatedRole).map(getRoleName).join(', ');
-                    errors.push(`[${instName}] CPU ${cpu}:  ${getRoleName(dedicatedRole)} требует ОТДЕЛЬНОЕ ядро, но делит с:  ${otherRoles}`);
+            const numa = coreNumaMap[cpu]?.toString();
+            
+            // Dedicated core check
+            DEDICATED.forEach(role => {
+                if (tags.has(role) && tags.size > 1) {
+                    const others = tagsArr.filter(t => t !== role).map(t => ROLES_BY_ID[t]?.name || t).join(', ');
+                    errors.push(`[${instName}] CPU ${cpu}: ${ROLES_BY_ID[role]?.name} needs dedicated core, shares with: ${others}`);
                 }
             });
-
-            // === 2. ПРОВЕРКА: Запрещённые соседства ===
-            if (tags.size > 1) {
-                for (let i = 0; i < tagsArray.length; i++) {
-                    for (let j = i + 1; j < tagsArray.length; j++) {
-                        if (isForbiddenPair(tagsArray[i], tagsArray[j])) {
-                            errors.push(`[${instName}] CPU ${cpu}:  ЗАПРЕЩЕНО совмещать ${getRoleName(tagsArray[i])} + ${getRoleName(tagsArray[j])}`);
-                        }
-                    }
-                }
-            }
-
-            // === 3. ПРОВЕРКА: Локация на сетевой NUMA ===
-            if (netNodes.length > 0 && numaNode !== undefined) {
-                NETWORK_NUMA_REQUIRED. forEach(role => {
-                    if (tags.has(role) && !netNodes.includes(numaNode)) {
-                        if (role === 'gateway') {
-                            errors.push(`[${instName}] CPU ${cpu}: Gateway ДОЛЖЕН быть на сетевой NUMA (сейчас:  ${numaNode}, сетевая:  ${netNodes.join(',')})`);
-                        } else if (role === 'net_irq') {
-                            errors.push(`[${instName}] CPU ${cpu}: IRQ ДОЛЖЕН быть на сетевой NUMA`);
-                        } else {
-                            warnings.push(`[${instName}] CPU ${cpu}: ${getRoleName(role)} рекомендуется на сетевой NUMA (сейчас: ${numaNode})`);
-                        }
+            
+            // Network NUMA check
+            if (netNodes.length > 0 && numa) {
+                NET_REQUIRED.forEach(role => {
+                    if (tags.has(role) && !netNodes.includes(numa)) {
+                        errors.push(`[${instName}] CPU ${cpu}: ${ROLES_BY_ID[role]?.name} must be on network NUMA (current: ${numa}, net: ${netNodes.join(',')})`);
                     }
                 });
             }
-
-            // === 4. ПРОВЕРКА: Нагрузка на критичные сервисы ===
-            if (tags.has('gateway') || tags.has('robot')) {
-                const serviceName = tags.has('gateway') ? 'Gateway' : 'Robot';
-                if (load > TARGET_LOAD_CRITICAL_THRESHOLD) {
-                    errors.push(`[${instName}] CPU ${cpu}:  ${serviceName} ПЕРЕГРУЖЕН (${load}% > 80%). Целевая:  ~20%`);
-                } else if (load > TARGET_LOAD_WARNING) {
-                    warnings.push(`[${instName}] CPU ${cpu}: ${serviceName} высокая нагрузка (${load}%). Целевая: ~20%`);
-                }
-            }
-
-            // === 5. ПРОВЕРКА: Нагрузка на любое ядро ===
-            if (load > TARGET_LOAD_CRITICAL_THRESHOLD && tags.size > 0) {
-                if (! tags.has('gateway') && !tags.has('robot')) {
-                    warnings.push(`[${instName}] CPU ${cpu}: Высокая нагрузка ${load}%`);
-                }
+            
+            // Load check for critical services
+            if ((tags.has('gateway') || tags.has('robot')) && load > 80) {
+                errors.push(`[${instName}] CPU ${cpu}: Critical service overloaded (${load}%)`);
+            } else if ((tags.has('gateway') || tags.has('robot')) && load > 50) {
+                warnings.push(`[${instName}] CPU ${cpu}: High load on critical service (${load}%)`);
             }
         });
     });
-
-    // === 6. ПРОВЕРКА: System (OS) cores ===
-    if (physInstance) {
-        let osCoreCount = 0;
-        let osTotalLoad = 0;
-        
-        Object.keys(physInstance).forEach(cpu => {
-            if (physInstance[cpu].has('sys_os')) {
-                osCoreCount++;
-                osTotalLoad += parseFloat(cpuLoadMap[cpu] || 0);
-            }
-        });
-
-        if (osCoreCount === 0) {
-            warnings.push(`[Physical] Не выделены ядра под System (OS)`);
+    
+    // OS cores check
+    const phys = instances['Physical'];
+    if (phys) {
+        const osCores = Object.keys(phys).filter(cpu => phys[cpu].has('sys_os'));
+        if (osCores.length === 0) {
+            warnings.push('No OS cores allocated');
         } else {
-            const avgOsLoad = osTotalLoad / osCoreCount;
-            if (avgOsLoad > 50) {
-                warnings.push(`[Physical] Высокая средняя нагрузка на OS ядра:  ${avgOsLoad. toFixed(0)}%. Рекомендуется добавить ядра. `);
+            let osLoad = 0;
+            osCores.forEach(c => osLoad += parseFloat(cpuLoadMap[c] || 0));
+            if (osLoad / osCores.length > 50) {
+                warnings.push(`High average OS load: ${(osLoad/osCores.length).toFixed(0)}%`);
             }
-            info.push(`[Physical] OS ядер: ${osCoreCount}, средняя нагрузка:  ${avgOsLoad.toFixed(0)}%`);
+            info.push(`OS cores: ${osCores.length}, avg load: ${(osLoad/osCores.length).toFixed(0)}%`);
         }
     }
-
-    // === 7. ПРОВЕРКА:  Роботы на разных NUMA в одном пуле ===
-    Object.keys(instances).forEach(instName => {
-        if (instName === 'Physical') return;
-        
-        const inst = instances[instName];
-        const robotNumas = new Set();
-        
-        Object. keys(inst).forEach(cpu => {
-            if (inst[cpu].has('robot')) {
-                const numa = coreNumaMap[cpu];
-                if (numa !== undefined) robotNumas.add(numa. toString());
-            }
-        });
-
-        // Если роботы на нескольких NUMA нодах - предупреждение о тирах
-        if (robotNumas.size > 1) {
-            info.push(`[${instName}] Роботы распределены по ${robotNumas.size} NUMA нодам: ${Array.from(robotNumas).join(', ')}. Убедитесь, что пулы разделены по нодам.`);
-        }
-    });
-
-    // === 8. ПРОВЕРКА: IRQ ядра ===
-    if (physInstance) {
-        let irqCount = 0;
-        Object.keys(physInstance).forEach(cpu => {
-            if (physInstance[cpu].has('net_irq')) irqCount++;
-        });
-        
-        if (irqCount === 0 && netNodes.length > 0) {
-            warnings.push(`[Physical] Не выделены ядра под IRQ (сетевые прерывания)`);
-        } else if (irqCount > 0) {
-            info.push(`[Physical] IRQ ядер: ${irqCount}`);
-        }
-    }
-
-    // === ВЫВОД РЕЗУЛЬТАТОВ ===
+    
+    // Output
     let html = '';
-    
     if (errors.length === 0 && warnings.length === 0) {
-        html = '<div style="color: #4caf50; font-weight: bold;">✓ Конфигурация валидна</div>';
+        html = '<div class="val-ok">✓ Configuration valid</div>';
     }
-    
     if (errors.length > 0) {
-        html += '<div style="color: #f44336; font-weight: bold; margin-bottom: 8px;">❌ ОШИБКИ:</div>';
-        errors.forEach(e => {
-            html += `<div style="color: #f44336; margin-left: 10px; margin-bottom: 4px;">• ${e}</div>`;
-        });
+        html += '<div class="val-error" style="font-weight:bold;">Errors:</div>';
+        errors.forEach(e => html += `<div class="val-error">• ${e}</div>`);
     }
-    
     if (warnings.length > 0) {
-        html += '<div style="color: #ff9800; font-weight: bold; margin-top: 8px; margin-bottom: 8px;">⚠ ПРЕДУПРЕЖДЕНИЯ:</div>';
-        warnings.forEach(w => {
-            html += `<div style="color: #ff9800; margin-left: 10px; margin-bottom: 4px;">• ${w}</div>`;
-        });
+        html += '<div class="val-warn" style="font-weight:bold;margin-top:4px;">Warnings:</div>';
+        warnings.forEach(w => html += `<div class="val-warn">• ${w}</div>`);
+    }
+    if (info.length > 0) {
+        html += '<div class="val-info" style="font-weight:bold;margin-top:4px;">Info:</div>';
+        info.forEach(i => html += `<div class="val-info">• ${i}</div>`);
     }
     
-    if (info.length > 0) {
-        html += '<div style="color: #2196f3; font-weight: bold; margin-top: 8px; margin-bottom: 8px;">ℹ ИНФОРМАЦИЯ:</div>';
-        info.forEach(i => {
-            html += `<div style="color: #2196f3; margin-left: 10px; margin-bottom: 4px;">• ${i}</div>`;
-        });
-    }
-
-    document. getElementById('validation-output').innerHTML = html;
+    document.getElementById('validation-output').innerHTML = html;
 }
 
-    // Drag and drop support for JSON import
-    document.body.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-    });
+// ==================== COMPARE MODE ====================
+function loadCompareFile(target) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) readCompareFile(file, target);
+    };
+    input.click();
+}
 
-    document.body.addEventListener('drop', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        if (e.dataTransfer.files.length > 0) {
-            const file = e.dataTransfer.files[0];
-            if (file.name.endsWith('.json')) {
-                importConfig(file);
+function readCompareFile(file, target) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const config = JSON.parse(e.target.result);
+            if (target === 'old') {
+                compareOld = config;
+                renderComparePanel('old', config);
             } else {
-                alert('Пожалуйста, загрузите JSON файл');
+                compareNew = config;
+                renderComparePanel('new', config);
+            }
+            if (compareOld && compareNew) {
+                calculateDiff();
+            }
+        } catch (err) {
+            alert('Error parsing JSON: ' + err.message);
+        }
+    };
+    reader.readAsText(file);
+}
+
+function clearCompare(target) {
+    if (target === 'old') {
+        compareOld = null;
+        document.getElementById('compare-old-body').innerHTML = `
+            <div class="compare-drop-zone" id="drop-old" onclick="loadCompareFile('old')">
+                <div class="drop-icon">📁</div>
+                <div class="drop-text">Drop JSON or click to select<br><strong>Old configuration</strong></div>
+            </div>
+        `;
+    } else {
+        compareNew = null;
+        document.getElementById('compare-new-body').innerHTML = `
+            <div class="compare-drop-zone" id="drop-new" onclick="loadCompareFile('new')">
+                <div class="drop-icon">📁</div>
+                <div class="drop-text">Drop JSON or click to select<br><strong>New configuration</strong></div>
+            </div>
+        `;
+    }
+    document.getElementById('compare-summary').style.display = 'none';
+    initDragDrop();
+}
+
+function renderComparePanel(target, config) {
+    const body = document.getElementById(`compare-${target}-body`);
+    
+    // Build geometry from config
+    const geom = config.geometry || {};
+    const netNumas = new Set(config.netNumaNodes || []);
+    const insts = config.instances || {};
+    
+    let html = `<div style="margin-bottom:10px;font-size:11px;color:#888;">
+        Server: <strong>${config.serverName || 'Unknown'}</strong> | 
+        Date: ${config.timestamp ? new Date(config.timestamp).toLocaleString() : 'N/A'}
+    </div>`;
+    
+    html += '<div class="blueprint" style="transform:scale(0.9);transform-origin:top left;">';
+    
+    const sockets = Object.keys(geom).sort((a, b) => a - b);
+    sockets.forEach(socketId => {
+        html += `<div class="socket" data-socket="${socketId}" style="min-width:auto;">`;
+        html += `<div class="socket-label">S${socketId}</div>`;
+        html += '<div class="socket-content">';
+        
+        Object.keys(geom[socketId]).sort((a, b) => a - b).forEach(numaId => {
+            const isNetwork = netNumas.has(numaId);
+            html += `<div class="numa ${isNetwork ? 'is-network' : ''}" style="min-width:auto;padding:6px;">`;
+            html += `<div class="numa-label">N${numaId}</div>`;
+            
+            Object.keys(geom[socketId][numaId]).sort((a, b) => parseInt(a) - parseInt(b)).forEach(l3Id => {
+                html += '<div class="cores-grid" style="margin-top:12px;">';
+                
+                geom[socketId][numaId][l3Id].forEach(cpu => {
+                    const tags = insts['Physical']?.[cpu] || [];
+                    let bg = '#151520';
+                    let border = '#333';
+                    
+                    if (tags.length > 0) {
+                        const role = ROLES_BY_ID[tags[0]];
+                        if (role) {
+                            bg = role.color;
+                            border = role.color;
+                        }
+                    }
+                    
+                    html += `<div class="core compare-core" data-cpu="${cpu}" data-target="${target}"
+                                 style="background:${bg};border-color:${border};${tags.length > 0 ? 'color:#fff;' : ''}">${cpu}</div>`;
+                });
+                
+                html += '</div>';
+            });
+            
+            html += '</div>';
+        });
+        
+        html += '</div></div>';
+    });
+    
+    html += '</div>';
+    body.innerHTML = html;
+}
+
+function calculateDiff() {
+    if (!compareOld || !compareNew) return;
+    
+    const oldInst = compareOld.instances?.['Physical'] || {};
+    const newInst = compareNew.instances?.['Physical'] || {};
+    
+    const allCpus = new Set([...Object.keys(oldInst), ...Object.keys(newInst)]);
+    
+    let added = 0, removed = 0, changed = 0;
+    
+    allCpus.forEach(cpu => {
+        const oldTags = new Set(oldInst[cpu] || []);
+        const newTags = new Set(newInst[cpu] || []);
+        
+        const hadRole = oldTags.size > 0;
+        const hasRole = newTags.size > 0;
+        
+        // Find elements
+        const oldEl = document.querySelector(`.compare-core[data-cpu="${cpu}"][data-target="old"]`);
+        const newEl = document.querySelector(`.compare-core[data-cpu="${cpu}"][data-target="new"]`);
+        
+        if (!hadRole && hasRole) {
+            // Added
+            added++;
+            if (newEl) newEl.classList.add('diff-added');
+        } else if (hadRole && !hasRole) {
+            // Removed
+            removed++;
+            if (oldEl) oldEl.classList.add('diff-removed');
+        } else if (hadRole && hasRole) {
+            // Check if changed
+            const same = oldTags.size === newTags.size && [...oldTags].every(t => newTags.has(t));
+            if (!same) {
+                changed++;
+                if (oldEl) oldEl.classList.add('diff-changed');
+                if (newEl) newEl.classList.add('diff-changed');
             }
         }
     });
-
+    
+    document.getElementById('diff-added').textContent = added;
+    document.getElementById('diff-removed').textContent = removed;
+    document.getElementById('diff-changed').textContent = changed;
+    document.getElementById('compare-summary').style.display = 'flex';
+}
 </script>
 </body>
 </html>
