@@ -2,39 +2,40 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>HFT CPU Mapper v3.6</title>
+    <title>HFT CPU Mapper v3.7 [Multi-Thread View]</title>
     <style>
         :root {
             --bg: #0a0a0f;
-            --panel: #0d0d15;
-            --panel-border: #1a1a2e;
-            --text: #c0c0c0;
-            --text-dim: #666;
-            --accent: #00d4ff;
-            --accent-dim: #0066aa;
+            --panel: #13131f;
+            --panel-border: #2a2a3e;
+            --text: #e0e0e0;
+            --text-dim: #777;
+            --accent: #00f2ff; /* Cyberpunk Cyan */
+            --accent-dim: #008891;
             
-            --socket0: #00d4ff;
-            --socket1: #ff6d00;
-            --socket2: #4caf50;
-            --socket3: #ff5722;
-            --numa: #c586c0;
-            --numa-net: #ffd700;
-            --l3: #4ec9b0;
+            --socket0: #00f2ff;
+            --socket1: #ff0055;
+            --socket2: #00ff9d;
+            --socket3: #ffae00;
             
-            /* --- REFINED SOFT PALETTE --- */
-            --role-os: #b0bec5;       /* Blue Grey - Muted */
-            --role-irq: #d63031;      /* Purple - Softer than Neon */
-            --role-udp: #ff764d;      /* Orange - Warm, not acidic */
-            --role-robot: #00b894;    /* Pink - Distinct but readable */
-            --role-pool1: #00a382;    /* Red - Softened */
-            --role-pool2: #008c70;    /* Dark Red - Deep */
-            --role-ar: #6c5ce7;       /* Dark Magenta */
-            --role-gateway: #26d977;  /* Green - Forest/Sage style */
-            --role-rf: #a2d926;       /* Teal - Darker/Softer */
-            --role-click: #e84393;    /* Yellow - Darker mustard */
-            --role-formula: #e84393;  /* White/Grey - Muted */
-            --role-trash: #fdcb6e;    /* Brown */
-            --role-isolated: #0984e3; /* Deep Purple */
+            --numa: #bd93f9;
+            --numa-net: #ffb86c;
+            --l3: #6272a4;
+            
+            /* --- UPDATED HIGH CONTRAST PALETTE (CSS Variables for reference) --- */
+            --role-os: #607d8b;       
+            --role-irq: #ff0055;      /* Hot Pink/Red */
+            --role-udp: #ff9100;      /* Bright Orange */
+            --role-robot: #00e676;    /* Neon Green */
+            --role-pool1: #00b0ff;    /* Bright Blue */
+            --role-pool2: #2979ff;    /* Deep Blue */
+            --role-ar: #d500f9;       /* Purple */
+            --role-gateway: #ffea00;  /* Yellow */
+            --role-rf: #1de9b6;       /* Teal */
+            --role-click: #3d5afe;    /* Indigo */
+            --role-formula: #b0bec5;  
+            --role-trash: #5d4037;    
+            --role-isolated: #ffffff; /* White Border */
             
             --core-size: 38px;
             --sidebar-width: 260px;
@@ -124,9 +125,9 @@
         
         textarea {
             width: 100%;
-            background: #050508;
+            background: #080810;
             border: 1px solid var(--panel-border);
-            color: #9cdcfe;
+            color: #00f2ff;
             padding: 8px;
             font-family: inherit;
             font-size: 10px;
@@ -149,34 +150,37 @@
             font-weight: 600;
             transition: all 0.2s;
             margin-top: 6px;
+            border-radius: 2px;
         }
         
         .btn-primary {
-            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%);
-            color: #000;
+            background: var(--accent-dim);
+            color: #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
         
         .btn-primary:hover {
-            filter: brightness(1.1);
-            transform: translateY(-1px);
+            background: var(--accent);
+            color: #000;
         }
         
         .btn-secondary {
-            background: #1a1a2e;
+            background: #1e1e2d;
             color: var(--text);
             border: 1px solid var(--panel-border);
         }
         
         .btn-secondary:hover {
-            background: #252540;
+            background: #2a2a3e;
+            border-color: #555;
         }
         
         /* Core - Adaptive sizing based on total cores */
         .core {
             width: var(--core-size);
             height: var(--core-size);
-            background: #151520;
-            border: 2px solid #333;
+            background: #181825;
+            border: 2px solid #2a2a3e;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -185,9 +189,9 @@
             color: #555;
             cursor: crosshair;
             position: relative;
-            transition: all 0.1s;
+            transition: transform 0.1s, box-shadow 0.1s;
             user-select: none;
-            border-radius: 3px;
+            border-radius: 4px;
         }
         
         .core:hover {
@@ -195,22 +199,25 @@
             z-index: 10;
             transform: scale(1.2);
             box-shadow: 0 0 15px rgba(255,255,255,0.4);
+            color: #fff;
         }
         
+        /* Text shadow to make numbers readable on bright colors */
         .core.has-role {
             color: #fff;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+            text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.8);
+            border-color: rgba(255,255,255,0.2);
         }
         
         .core .load-bar {
             position: absolute;
-            bottom: 2px;
-            left: 2px;
-            right: 2px;
-            height: 4px;
-            background: #0a0a0f;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: rgba(0,0,0,0.5);
             overflow: hidden;
-            border-radius: 1px;
+            border-radius: 0 0 2px 2px;
         }
         
         .core .load-fill {
@@ -224,9 +231,15 @@
             right: 2px;
             width: 6px;
             height: 6px;
-            background: var(--role-irq);
+            background: #ff0055;
             border-radius: 50%;
-            box-shadow: 0 0 6px var(--role-irq);
+            box-shadow: 0 0 4px #ff0055;
+            border: 1px solid #fff;
+            z-index: 5;
+        }
+
+        .core.isolated-border {
+            border: 2px dashed #fff !important;
         }
         
         /* Adaptive core sizes */
@@ -239,50 +252,52 @@
         .palette {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 4px;
+            gap: 6px;
         }
         
         .palette-item {
             display: flex;
             align-items: center;
-            gap: 6px;
-            padding: 5px 8px;
-            background: #111118;
-            border: 1px solid transparent;
-            border-radius: 3px;
+            gap: 8px;
+            padding: 6px 10px;
+            background: #181825;
+            border: 1px solid #2a2a3e;
+            border-radius: 4px;
             cursor: pointer;
             font-size: 10px;
             transition: all 0.15s;
         }
         
         .palette-item:hover {
-            background: #1a1a28;
+            background: #252535;
             transform: translateX(2px);
         }
         
         .palette-item.active {
             border-color: var(--accent);
-            background: rgba(0, 212, 255, 0.1);
+            background: rgba(0, 242, 255, 0.1);
         }
         
         .palette-swatch {
-            width: 10px;
-            height: 10px;
-            border-radius: 2px;
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
             flex-shrink: 0;
+            border: 1px solid rgba(255,255,255,0.2);
         }
         
         /* Output box */
         .output-box {
-            background: #050508;
+            background: #080810;
             border: 1px solid var(--panel-border);
             padding: 8px;
             font-size: 10px;
-            color: #888;
+            color: #aaa;
             max-height: 150px;
             overflow-y: auto;
             white-space: pre-wrap;
             word-break: break-all;
+            font-family: 'Consolas', monospace;
         }
         
         /* Main Area */
@@ -310,6 +325,7 @@
             transition: all 0.2s;
             text-transform: uppercase;
             letter-spacing: 1px;
+            font-weight: 600;
         }
         
         .tab:hover {
@@ -324,7 +340,7 @@
         
         /* Header */
         .header {
-            background: linear-gradient(180deg, #0d0d18 0%, var(--bg) 100%);
+            background: linear-gradient(180deg, #13131f 0%, var(--bg) 100%);
             padding: 15px 25px;
             border-bottom: 1px solid var(--panel-border);
             display: flex;
@@ -341,6 +357,7 @@
         
         .header-left h1 span {
             color: var(--accent);
+            font-weight: 700;
         }
         
         .header-left .subtitle {
@@ -381,9 +398,9 @@
             overflow: auto;
             padding: 20px;
             background: 
-                radial-gradient(circle at 50% 50%, rgba(0,212,255,0.03) 0%, transparent 50%),
-                linear-gradient(90deg, rgba(26,26,46,0.3) 1px, transparent 1px),
-                linear-gradient(rgba(26,26,46,0.3) 1px, transparent 1px);
+                radial-gradient(circle at 50% 50%, rgba(0, 242, 255, 0.02) 0%, transparent 60%),
+                linear-gradient(90deg, rgba(42,42,62,0.5) 1px, transparent 1px),
+                linear-gradient(rgba(42,42,62,0.5) 1px, transparent 1px);
             background-size: 100% 100%, 20px 20px, 20px 20px;
         }
         
@@ -412,10 +429,12 @@
         
         /* Socket */
         .socket {
-            background: rgba(10, 10, 15, 0.9);
+            background: rgba(19, 19, 31, 0.95);
             border: 2px solid var(--socket0);
             padding: 15px;
             position: relative;
+            border-radius: 4px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
         }
         
         .socket[data-socket="1"] { border-color: var(--socket1); }
@@ -432,6 +451,8 @@
             font-weight: 700;
             letter-spacing: 2px;
             color: var(--socket0);
+            border: 1px solid var(--panel-border);
+            border-radius: 4px;
         }
         
         .socket[data-socket="1"] .socket-label { color: var(--socket1); }
@@ -446,18 +467,19 @@
         
         /* NUMA */
         .numa {
-            background: rgba(197, 134, 192, 0.03);
+            background: rgba(189, 147, 249, 0.05);
             border: 1px dashed var(--numa);
             padding: 12px;
             position: relative;
             flex: 1;
             min-width: 180px;
+            border-radius: 4px;
         }
         
         .numa.is-network {
             border: 2px solid var(--numa-net);
-            background: rgba(255, 215, 0, 0.06);
-            box-shadow: 0 0 25px rgba(255, 215, 0, 0.15);
+            background: rgba(255, 184, 108, 0.08);
+            box-shadow: 0 0 15px rgba(255, 184, 108, 0.1);
         }
         
         .numa-label {
@@ -469,6 +491,8 @@
             font-size: 10px;
             font-weight: 600;
             color: var(--numa);
+            border-radius: 2px;
+            border: 1px solid #333;
         }
         
         .numa.is-network .numa-label {
@@ -486,15 +510,17 @@
             font-size: 9px;
             font-weight: 700;
             letter-spacing: 0.5px;
+            border-radius: 2px;
         }
         
         /* L3 Cache */
         .l3 {
-            background: rgba(78, 201, 176, 0.04);
+            background: rgba(98, 114, 164, 0.1);
             border: 1px dotted var(--l3);
             padding: 10px;
             margin-top: 10px;
             position: relative;
+            border-radius: 4px;
         }
         
         .l3-label {
@@ -507,6 +533,8 @@
             font-size: 9px;
             color: var(--l3);
             white-space: nowrap;
+            border: 1px solid #333;
+            border-radius: 2px;
         }
         
         .cores-grid {
@@ -567,12 +595,12 @@
         
         .compare-drop-zone:hover {
             border-color: var(--accent);
-            background: rgba(0,212,255,0.05);
+            background: rgba(0, 242, 255, 0.05);
         }
         
         .compare-drop-zone.dragover {
             border-color: var(--accent);
-            background: rgba(0,212,255,0.1);
+            background: rgba(0, 242, 255, 0.1);
         }
         
         .drop-icon {
@@ -585,59 +613,19 @@
             color: var(--text-dim);
         }
         
-        /* --- SOFT DIFF MARKERS --- */
-        .core.diff-added {
-            box-shadow: 0 0 0 1px #66bb6a, 0 0 4px rgba(102, 187, 106, 0.3);
-        }
-        
-        .core.diff-removed {
-            box-shadow: 0 0 0 1px #ef5350, 0 0 4px rgba(239, 83, 80, 0.3);
-        }
-        
-        .core.diff-changed {
-            box-shadow: 0 0 0 1px #fdd835, 0 0 4px rgba(253, 216, 53, 0.3);
-        }
-        
-        /* Compare summary */
-        .compare-summary {
-            padding: 15px 20px;
-            background: var(--panel);
-            border-top: 1px solid var(--panel-border);
-            display: flex;
-            gap: 30px;
-            justify-content: center;
-        }
-        
-        .summary-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 12px;
-        }
-        
-        .summary-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 2px;
-        }
-        
-        .summary-dot.added { background: #66bb6a; }
-        .summary-dot.removed { background: #ef5350; }
-        .summary-dot.changed { background: #fdd835; }
-        
         /* Tooltip */
         #tooltip {
             position: fixed;
             display: none;
-            background: rgba(13, 13, 21, 0.95);
-            border: 1px solid var(--panel-border);
+            background: rgba(19, 19, 25, 0.98);
+            border: 1px solid #444;
             padding: 10px 12px;
             border-radius: 4px;
             font-size: 11px;
             z-index: 1000;
             pointer-events: none;
             max-width: 250px;
-            backdrop-filter: blur(8px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
         }
         
         .tooltip-header {
@@ -645,7 +633,7 @@
             color: #fff;
             margin-bottom: 6px;
             padding-bottom: 4px;
-            border-bottom: 1px solid var(--panel-border);
+            border-bottom: 1px solid #333;
         }
         
         .tooltip-row {
@@ -653,7 +641,7 @@
             align-items: center;
             gap: 6px;
             margin-top: 3px;
-            color: #aaa;
+            color: #ccc;
         }
         
         .tooltip-swatch {
@@ -670,7 +658,7 @@
         
         /* Validation */
         .validation-box {
-            background: #050508;
+            background: #080810;
             border: 1px solid var(--panel-border);
             padding: 8px;
             font-size: 10px;
@@ -678,21 +666,10 @@
             overflow-y: auto;
         }
         
-        .val-error { color: #f44336; }
-        .val-warn { color: #ff9800; }
-        .val-info { color: #2196f3; }
-        .val-ok { color: #4caf50; }
-        
-        /* Inter-socket bus animation */
-        @keyframes busFlow {
-            0% { stroke-dashoffset: 20; }
-            100% { stroke-dashoffset: 0; }
-        }
-        
-        .bus-line {
-            stroke-dasharray: 8, 4;
-            animation: busFlow 0.8s linear infinite;
-        }
+        .val-error { color: #ff5252; }
+        .val-warn { color: #ffab40; }
+        .val-info { color: #40c4ff; }
+        .val-ok { color: #69f0ae; }
     </style>
 </head>
 <body>
@@ -732,7 +709,7 @@
             <div style="display: flex; align-items: center; gap: 8px; font-size: 10px;">
                 <span>Target:</span>
                 <input type="number" id="calc-target" value="3" min="1" style="width: 50px; background: #111; border: 1px solid #333; color: #fff; padding: 4px; text-align: center;" onchange="calculateSizing()">
-                <span id="calc-result" style="color: #4caf50;">-</span>
+                <span id="calc-result" style="color: #69f0ae;">-</span>
             </div>
         </div>
         
@@ -799,42 +776,28 @@
                 </div>
             </div>
         </div>
-        
-        <div class="compare-summary" id="compare-summary" style="display: none;">
-            <div class="summary-item">
-                <div class="summary-dot added"></div>
-                <span>Added: <strong id="diff-added">0</strong></span>
-            </div>
-            <div class="summary-item">
-                <div class="summary-dot removed"></div>
-                <span>Removed: <strong id="diff-removed">0</strong></span>
-            </div>
-            <div class="summary-item">
-                <div class="summary-dot changed"></div>
-                <span>Changed: <strong id="diff-changed">0</strong></span>
-            </div>
-        </div>
     </div>
 </div>
 
 <div id="tooltip"></div>
 
 <script>
-// ==================== CONSTANTS (SOFT PALETTE) ====================
+// ==================== CONSTANTS (HFT HIGH CONTRAST PALETTE) ====================
+// Changed colors to bright neon/distinct colors for dark mode
 const ROLES = [
-    { id: 'sys_os',   name: 'System (OS)',   color: '#546e7a' },
-    { id: 'net_irq',  name: 'IRQ (Net)',     color: '#ab47bc' },
-    { id: 'udp',      name: 'UDP',           color: '#fb8c00' },
-    { id: 'robot',    name: 'Robot',         color: '#ec407a' },
-    { id: 'pool1',    name: 'Robot Pool 1',  color: '#e53935' },
-    { id: 'pool2',    name: 'Robot Pool 2',  color: '#b71c1c' },
-    { id: 'ar',       name: 'AR',            color: '#880e4f' },
-    { id: 'gateway',  name: 'Gateway',       color: '#2e7d32' },
-    { id: 'rf',       name: 'RF (Remote)',   color: '#00695c' },
-    { id: 'click',    name: 'Clickhouse',    color: '#f9a825' },
-    { id: 'formula',  name: 'Formula',       color: '#cfd8dc' },
-    { id: 'trash',    name: 'Trash',         color: '#5d4037' },
-    { id: 'isolated', name: 'Isolated',      color: '#6a1b9a' }
+    { id: 'sys_os',   name: 'System (OS)',   color: '#607d8b' }, // Grey-Blue
+    { id: 'net_irq',  name: 'IRQ (Net)',     color: '#ff0055' }, // Hot Pink/Red
+    { id: 'udp',      name: 'UDP',           color: '#ff9100' }, // Bright Orange
+    { id: 'robot',    name: 'Robot',         color: '#00e676' }, // Neon Green
+    { id: 'pool1',    name: 'Robot Pool 1',  color: '#00b0ff' }, // Bright Blue
+    { id: 'pool2',    name: 'Robot Pool 2',  color: '#2979ff' }, // Deep Blue
+    { id: 'ar',       name: 'AR',            color: '#d500f9' }, // Purple
+    { id: 'gateway',  name: 'Gateway',       color: '#ffea00' }, // Bright Yellow
+    { id: 'rf',       name: 'RF (Remote)',   color: '#1de9b6' }, // Teal
+    { id: 'click',    name: 'Clickhouse',    color: '#3d5afe' }, // Indigo
+    { id: 'formula',  name: 'Formula',       color: '#b0bec5' }, // Light Grey
+    { id: 'trash',    name: 'Trash',         color: '#5d4037' }, // Brown
+    { id: 'isolated', name: 'Isolated',      color: '#ffffff' }  // White (Border Only)
 ];
 
 const ROLE_KEY_MAP = {
@@ -855,7 +818,7 @@ const ROLE_KEY_MAP = {
 const ROLES_BY_ID = {};
 ROLES.forEach(r => ROLES_BY_ID[r.id] = r);
 
-// Priority list
+// Priority list (Used for sorting, not for hiding anymore)
 const ROLE_PRIORITY = {
     'sys_os': 100,
     'net_irq': 100,
@@ -1191,7 +1154,7 @@ function renderSocket(socketId, numaData) {
 
 function renderCore(instanceName, cpu) {
     const load = parseFloat(cpuLoadMap[cpu] || 0);
-    let loadColor = load > 80 ? '#f44336' : (load > 50 ? '#ffeb3b' : '#4caf50');
+    let loadColor = load > 80 ? '#ff0055' : (load > 50 ? '#ffae00' : '#00ff9d');
     return `<div class="core" id="core-${instanceName}-${cpu}" data-cpu="${cpu}" onmousedown="onCoreMouseDown(event, '${instanceName}', '${cpu}')" onmouseenter="onCoreMouseEnter(event, '${instanceName}', '${cpu}')" onmousemove="moveTooltip(event)" onmouseleave="hideTooltip()">${cpu}<div class="load-bar"><div class="load-fill" style="width:${load}%;background:${loadColor}"></div></div>${coreIRQMap[cpu] && coreIRQMap[cpu].length > 0 ? '<div class="irq-dot"></div>' : ''}</div>`;
 }
 
@@ -1201,39 +1164,57 @@ function getDisplayTags(instanceName, cpu) {
     Object.keys(instances).forEach(instName => {
         if (instName !== 'Physical' && instances[instName]?.[cpu]) instances[instName][cpu].forEach(t => allTags.add(t));
     });
-    let hasHighPriority = false;
-    for (let t of allTags) {
-        if ((ROLE_PRIORITY[t] || 0) > ROLE_PRIORITY['isolated']) { hasHighPriority = true; break; }
-    }
-    const displayTags = [];
-    allTags.forEach(t => {
-        if (t === 'isolated' && hasHighPriority) return;
-        displayTags.push(t);
-    });
-    displayTags.sort((a, b) => (ROLE_PRIORITY[b] || 0) - (ROLE_PRIORITY[a] || 0));
-    return displayTags;
+    
+    // Sort tags by priority for list display order, but for coloring we used all non-isolated tags
+    const sortedTags = Array.from(allTags).sort((a, b) => (ROLE_PRIORITY[b] || 0) - (ROLE_PRIORITY[a] || 0));
+    return sortedTags;
 }
 
+// --- UPDATED VISUAL LOGIC FOR MULTI-SERVICE CORES ---
 function updateCoreVisual(instanceName, cpu) {
     const el = document.getElementById(`core-${instanceName}-${cpu}`);
     if (!el) return;
+    
     const displayTags = getDisplayTags(instanceName, cpu);
-    el.classList.remove('has-role', 'diff-added', 'diff-removed', 'diff-changed');
+    
+    // Separate actual functional roles from state flags (like 'isolated')
+    const fillTags = displayTags.filter(t => t !== 'isolated');
+    const isIsolated = displayTags.includes('isolated');
+
+    el.classList.remove('has-role', 'diff-added', 'diff-removed', 'diff-changed', 'isolated-border');
     el.style.background = '';
     el.style.borderColor = '';
-    if (displayTags.length > 0) {
-        el.classList.add('has-role');
-        const primaryRole = ROLES_BY_ID[displayTags[0]];
-        if (primaryRole) {
-            el.style.background = primaryRole.color;
-            el.style.borderColor = primaryRole.color;
+    
+    if (displayTags.length > 0) el.classList.add('has-role');
+    
+    // Logic for coloring:
+    // If 1 role -> Solid color
+    // If >1 role -> Hard-stop gradient stripes (Equal width)
+    
+    if (fillTags.length === 1) {
+        const r = ROLES_BY_ID[fillTags[0]];
+        if (r) {
+            el.style.background = r.color;
+            el.style.borderColor = r.color;
         }
-        if (displayTags.length > 1) {
-            const colors = displayTags.map(t => ROLES_BY_ID[t]?.color || '#fff');
-            const gradient = colors.map((c, i) => `${c} ${(i/colors.length)*100}%, ${c} ${((i+1)/colors.length)*100}%`).join(',');
-            el.style.background = `linear-gradient(135deg, ${gradient})`;
-            el.style.borderColor = '#fff';
-        }
+    } else if (fillTags.length > 1) {
+        // Create hard-stop stripes for clearer visualization
+        const colors = fillTags.map(t => ROLES_BY_ID[t]?.color || '#555');
+        const step = 100 / colors.length;
+        
+        let gradientStops = [];
+        colors.forEach((col, idx) => {
+            gradientStops.push(`${col} ${idx * step}%`);
+            gradientStops.push(`${col} ${(idx + 1) * step}%`);
+        });
+        
+        el.style.background = `linear-gradient(135deg, ${gradientStops.join(', ')})`;
+        el.style.borderColor = '#fff'; // White border to contain the chaos
+    }
+
+    // Apply dashed white border if isolated, regardless of fill
+    if (isIsolated) {
+        el.classList.add('isolated-border');
     }
 }
 
@@ -1267,10 +1248,10 @@ function showTooltip(e, instanceName, cpu) {
     const load = cpuLoadMap[cpu];
     let html = `<div class="tooltip-header">Core ${cpu}</div>`;
     if (load !== undefined) {
-        let color = load > 80 ? '#f44336' : (load > 50 ? '#ffeb3b' : '#4caf50');
+        let color = load > 80 ? '#ff0055' : (load > 50 ? '#ffae00' : '#00ff9d');
         html += `<div style="color:${color};font-weight:bold;margin-bottom:4px;">Load: ${load}%</div>`;
     }
-    if (coreIRQMap[cpu]?.length > 0) html += `<div style="color:#ab47bc;font-size:10px;">IRQ: ${coreIRQMap[cpu].join(', ')}</div>`;
+    if (coreIRQMap[cpu]?.length > 0) html += `<div style="color:#bd93f9;font-size:10px;">IRQ: ${coreIRQMap[cpu].join(', ')}</div>`;
     if (tags.length > 0) {
         html += '<div style="margin-top:4px;">';
         tags.forEach(tid => {
@@ -1346,16 +1327,19 @@ function renderComparePanel(target, config) {
                     Object.keys(insts).forEach(instName => { if (insts[instName][cpu]) tags.push(...insts[instName][cpu]); });
                     tags.sort((a, b) => (ROLE_PRIORITY[b] || 0) - (ROLE_PRIORITY[a] || 0));
                     
-                    let bg = '#151520', border = '#333';
-                    if (tags.length > 0) {
-                        const role = ROLES_BY_ID[tags[0]];
+                    let bg = '#181825', border = '#2a2a3e';
+                    const fillTags = tags.filter(t => t !== 'isolated');
+                    
+                    // Simple compare coloring (doesn't support stripes for simplicity in small view)
+                    if (fillTags.length > 0) {
+                        const role = ROLES_BY_ID[fillTags[0]];
                         if (role) { bg = role.color; border = role.color; }
                     }
                     html += `<div class="core compare-core" data-cpu="${cpu}" data-target="${target}" 
-                                 onmouseenter="showCompareTooltip(event, '${target}', '${cpu}')" 
-                                 onmousemove="moveTooltip(event)" 
-                                 onmouseleave="hideTooltip()"
-                                 style="background:${bg};border-color:${border};${tags.length > 0 ? 'color:#fff;' : ''}">${cpu}</div>`;
+                                     onmouseenter="showCompareTooltip(event, '${target}', '${cpu}')" 
+                                     onmousemove="moveTooltip(event)" 
+                                     onmouseleave="hideTooltip()"
+                                     style="background:${bg};border-color:${border};${fillTags.length > 0 ? 'color:#fff;' : ''}">${cpu}</div>`;
                 });
                 html += '</div>';
             });
@@ -1386,7 +1370,6 @@ function showCompareTooltip(e, target, cpu) {
     }
     const displayTags = [];
     allTags.forEach(t => {
-        if (t === 'isolated' && hasHighPriority) return;
         displayTags.push(t);
     });
     displayTags.sort((a, b) => (ROLE_PRIORITY[b] || 0) - (ROLE_PRIORITY[a] || 0));
@@ -1472,7 +1455,7 @@ function copyConfig() { navigator.clipboard.writeText(document.getElementById('o
 function calculateSizing() { /* Included in main logic block above */ }
 function validateConfig() { /* Included in main logic block above */ }
 function exportConfig() {
-    const config = { version: "3.6", serverName: serverName, timestamp: new Date().toISOString(), geometry: globalGeometry, netNumaNodes: [...netNumaNodes], instances: {} };
+    const config = { version: "3.7", serverName: serverName, timestamp: new Date().toISOString(), geometry: globalGeometry, netNumaNodes: [...netNumaNodes], instances: {} };
     Object.keys(instances).forEach(instName => { config.instances[instName] = {}; Object.keys(instances[instName]).forEach(cpu => { config.instances[instName][cpu] = [...instances[instName][cpu]]; }); });
     const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `cpu-config-${serverName || 'unknown'}-${new Date().toISOString().split('T')[0]}.json`; a.click();
